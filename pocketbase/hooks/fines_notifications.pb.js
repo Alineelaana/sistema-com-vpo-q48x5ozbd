@@ -102,6 +102,90 @@ cronAdd('daily_fines_due_check', '0 6 * * *', () => {
   }
 })
 
+// 1.1 Após criação de cada multa individual ou via importação em lote, verificar se precisa gerar notificação imediata
+onRecordAfterCreateSuccess((e) => {
+  try {
+    const status = e.record.getString('status')
+    if (status !== 'pending') return
+
+    const dueDateStr = e.record.getString('due_date')
+    if (!dueDateStr) return
+
+    const now = new Date()
+    const todayMs = now.getTime()
+    const dueDate = new Date(dueDateStr)
+    const diffMs = dueDate.getTime() - todayMs
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+
+    const isOverdue = diffDays < 0
+    const isDueSoon = diffDays >= 0 && diffDays <= 7
+
+    if (!isOverdue && !isDueSoon) return
+
+    const notifType = isOverdue ? 'overdue' : 'due_soon'
+
+    let existingNotif = null
+    try {
+      existingNotif = e.app.findFirstRecordByFilter(
+        'fine_notifications',
+        `fine_id = '${e.record.id}' && type = '${notifType}'`,
+      )
+    } catch (_) {}
+
+    if (existingNotif) return
+
+    let vehiclePlate = '—'
+    let driverName = 'Não identificado'
+    const vehicleId = e.record.getString('vehicle_id')
+    const driverId = e.record.getString('driver_id')
+
+    if (vehicleId) {
+      try {
+        const v = e.app.findRecordById('vehicles', vehicleId)
+        vehiclePlate = v.getString('plate')
+      } catch (_) {}
+    }
+
+    if (driverId) {
+      try {
+        const d = e.app.findRecordById('drivers', driverId)
+        driverName = d.getString('name')
+      } catch (_) {}
+    }
+
+    const noticeNumber = e.record.getString('notice_number')
+    const amountVal = e.record.getFloat('amount')
+    const absDays = Math.abs(diffDays)
+    const daysText = isOverdue
+      ? `vencida há ${absDays} dia(s)`
+      : `vence em ${diffDays === 0 ? 'hoje' : diffDays + ' dia(s)'}`
+
+    const title = isOverdue
+      ? `Multa Vencida (${noticeNumber})`
+      : `Vencimento Próximo (${noticeNumber})`
+
+    const message = `Auto ${noticeNumber} • Placa ${vehiclePlate} • Motorista: ${driverName} • Valor: R$ ${amountVal.toFixed(
+      2,
+    )} • Situação: ${daysText}.`
+
+    const notifCol = e.app.findCollectionByNameOrId('fine_notifications')
+    const rec = new Record(notifCol)
+    rec.set('fine_id', e.record.id)
+    rec.set('type', notifType)
+    rec.set('title', title)
+    rec.set('message', message)
+    rec.set('days_diff', absDays)
+    rec.set('is_read', false)
+    e.app.save(rec)
+    console.log(
+      `[fine_notifications] Notificação gerada após criação da multa ${e.record.id} (${noticeNumber}).`,
+    )
+  } catch (err) {
+    console.error(`[fine_notifications] Erro no hook onRecordAfterCreateSuccess:`, err)
+  }
+  e.next()
+}, 'traffic_fines')
+
 // 2. Rota personalizada para verificação de notificações sob demanda
 routerAdd('POST', '/backend/v1/fines/check-notifications', (e) => {
   try {

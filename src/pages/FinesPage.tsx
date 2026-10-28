@@ -65,7 +65,9 @@ import {
   XCircle,
   Filter,
   RotateCcw,
+  FileSpreadsheet,
 } from 'lucide-react'
+import { BatchFineImportModal } from '@/components/BatchFineImportModal'
 
 export const INFRACTION_TYPE_LABELS: Record<InfractionType, string> = {
   speeding: 'Excesso de Velocidade',
@@ -163,6 +165,9 @@ export const FinesPage: React.FC = () => {
   const [driverFilter, setDriverFilter] = useState<string>('all')
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+
+  // Modal de Importação em Lote
+  const [batchImportOpen, setBatchImportOpen] = useState(false)
 
   // Modal de Criação / Edição
   const [modalOpen, setModalOpen] = useState(false)
@@ -537,13 +542,24 @@ export const FinesPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Nova Multa
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setBatchImportOpen(true)}
+            className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-2 font-medium"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+            Importar em lote
+          </Button>
+
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Nova Multa
+          </Button>
+        </div>
       </div>
 
       {/* Cards de Resumo */}
@@ -1314,6 +1330,16 @@ export const FinesPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Importação em Lote */}
+      <BatchFineImportModal
+        open={batchImportOpen}
+        onOpenChange={setBatchImportOpen}
+        vehicles={vehicles}
+        drivers={drivers}
+        existingFines={fines}
+        onSuccess={loadAll}
+      />
     </div>
   )
 }

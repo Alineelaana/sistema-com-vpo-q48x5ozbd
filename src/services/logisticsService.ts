@@ -7,6 +7,9 @@ import type {
   CteDocument,
   TrafficFine,
   FineNotification,
+  InfractionType,
+  FineSeverity,
+  FineStatus,
 } from '@/types/logistics'
 
 // Empresa
@@ -239,5 +242,85 @@ export async function triggerCheckNotifications(): Promise<{
   } catch (err) {
     console.error('Erro ao acionar verificação de multas:', err)
     return { success: false, generated: 0, message: 'Erro ao verificar multas' }
+  }
+}
+
+export interface BatchImportFineItem {
+  raw: Record<string, string>
+  lineNumber: number
+  vehicle_id?: string
+  driver_id?: string
+  plateInput: string
+  driverInput?: string
+  notice_number: string
+  issuing_body: string
+  infraction_type: InfractionType
+  severity: FineSeverity
+  points: number
+  amount: number
+  infraction_date: string // ISO
+  due_date: string // ISO
+  status: FineStatus
+  description: string
+  location?: string
+  notes?: string
+  payment_date?: string
+  appeal_number?: string
+  warnings: string[]
+  errors: string[]
+  isValid: boolean
+}
+
+export interface BatchImportSummary {
+  totalRows: number
+  successCount: number
+  failureCount: number
+  results: {
+    notice_number: string
+    status: 'created' | 'error'
+    message?: string
+    id?: string
+  }[]
+}
+
+export async function batchCreateTrafficFines(
+  items: Omit<TrafficFine, 'id' | 'created' | 'updated' | 'expand'>[],
+): Promise<BatchImportSummary> {
+  let successCount = 0
+  let failureCount = 0
+  const results: BatchImportSummary['results'] = []
+
+  for (const item of items) {
+    try {
+      const created = await createTrafficFine(item)
+      successCount++
+      results.push({
+        notice_number: item.notice_number,
+        status: 'created',
+        id: created.id,
+      })
+    } catch (err: unknown) {
+      failureCount++
+      const msg = (err as { message?: string })?.message || 'Erro ao salvar registro'
+      results.push({
+        notice_number: item.notice_number,
+        status: 'error',
+        message: msg,
+      })
+    }
+  }
+
+  // Aciona verificação automática de notificações para que multas vencidas ou a vencer já gerem notificação
+  try {
+    await triggerCheckNotifications()
+  } catch (err) {
+    console.warn('Erro ao acionar verificação de notificações após importação em lote:', err)
+  }
+
+  return {
+    totalRows: items.length,
+    successCount,
+    failureCount,
+    results,
   }
 }
