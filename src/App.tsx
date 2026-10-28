@@ -16,6 +16,10 @@ import { VehiclesPage } from './pages/VehiclesPage'
 import { DriversPage } from './pages/DriversPage'
 import { CompanyPage } from './pages/CompanyPage'
 import { FinesPage } from './pages/FinesPage'
+import { DeliveriesPage } from './pages/DeliveriesPage'
+import { RoutingPage } from './pages/RoutingPage'
+import { ControlTowerPage } from './pages/ControlTowerPage'
+import { FreightAuditPage } from './pages/FreightAuditPage'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -32,6 +36,10 @@ const App = () => (
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/deliveries" element={<DeliveriesPage />} />
+              <Route path="/routing" element={<RoutingPage />} />
+              <Route path="/control-tower" element={<ControlTowerPage />} />
+              <Route path="/freight-audit" element={<FreightAuditPage />} />
               <Route path="/vpo-calc" element={<VpoPage />} />
               <Route path="/trips" element={<TripsPage />} />
               <Route path="/cte" element={<CtePage />} />

@@ -14,6 +14,10 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Package,
+  Radio,
+  Scale,
+  Sparkles,
   ChevronRight,
   ExternalLink,
 } from 'lucide-react'
@@ -43,8 +47,14 @@ export default function Layout() {
 
   const navItems = [
     { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+    // Módulos Fusion by nstech
+    { label: 'Entregas & Coletas', to: '/deliveries', icon: Package, badge: 'Fusion' },
+    { label: 'Roteirização', to: '/routing', icon: Navigation, badge: 'Fusion' },
+    { label: 'Torre de Controle', to: '/control-tower', icon: Radio, badge: 'Realtime' },
+    { label: 'Auditoria de Frete', to: '/freight-audit', icon: Scale, badge: 'Fusion' },
+    // Operações de Frota e VPO
     { label: 'Cálculo VPO', to: '/vpo-calc', icon: Calculator, highlight: true },
-    { label: 'Viagens & Rotas', to: '/trips', icon: Navigation },
+    { label: 'Viagens & Cargas', to: '/trips', icon: Truck },
     { label: 'Documentos CT-e', to: '/cte', icon: FileText },
     { label: 'Veículos / Frota', to: '/vehicles', icon: Truck },
     { label: 'Motoristas', to: '/drivers', icon: Users },
@@ -99,6 +109,18 @@ export default function Layout() {
                     className="text-[9px] px-1.5 py-0 border-indigo-400 text-indigo-300 bg-indigo-950/40"
                   >
                     ANTT
+                  </Badge>
+                )}
+                {item.badge && !item.highlight && (
+                  <Badge
+                    variant="outline"
+                    className={`text-[9px] px-1.5 py-0 ${
+                      item.badge === 'Realtime'
+                        ? 'border-emerald-500/40 text-emerald-400 bg-emerald-950/40'
+                        : 'border-indigo-400/30 text-indigo-300 bg-indigo-950/30'
+                    }`}
+                  >
+                    {item.badge}
                   </Badge>
                 )}
               </NavLink>

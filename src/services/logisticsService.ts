@@ -10,6 +10,10 @@ import type {
   InfractionType,
   FineSeverity,
   FineStatus,
+  Delivery,
+  DeliveryStatus,
+  DeliveryIncident,
+  IncidentType,
 } from '@/types/logistics'
 
 // Empresa
@@ -323,4 +327,192 @@ export async function batchCreateTrafficFines(
     failureCount,
     results,
   }
+}
+
+// ==========================================
+// Módulos Fusion: Entregas, Roteirização, POD, Ocorrências e Auditoria
+// ==========================================
+
+export async function getDeliveries(filter?: string, sort = '-created'): Promise<Delivery[]> {
+  try {
+    return await pb.collection('deliveries').getFullList<Delivery>({
+      filter: filter || undefined,
+      sort,
+      expand: 'vehicle_id,driver_id,trip_id',
+    })
+  } catch (error) {
+    console.error('Erro ao buscar entregas:', error)
+    return []
+  }
+}
+
+export async function getDeliveryById(id: string): Promise<Delivery | null> {
+  try {
+    return await pb.collection('deliveries').getOne<Delivery>(id, {
+      expand: 'vehicle_id,driver_id,trip_id',
+    })
+  } catch (error) {
+    console.error(`Erro ao buscar entrega ${id}:`, error)
+    return null
+  }
+}
+
+export async function createDelivery(
+  data: Omit<Delivery, 'id' | 'created' | 'updated' | 'expand'>,
+): Promise<Delivery> {
+  return await pb.collection('deliveries').create<Delivery>(data, {
+    expand: 'vehicle_id,driver_id,trip_id',
+  })
+}
+
+export async function updateDelivery(id: string, data: Partial<Delivery>): Promise<Delivery> {
+  return await pb.collection('deliveries').update<Delivery>(id, data, {
+    expand: 'vehicle_id,driver_id,trip_id',
+  })
+}
+
+export async function deleteDelivery(id: string): Promise<boolean> {
+  await pb.collection('deliveries').delete(id)
+  return true
+}
+
+// Salvar Comprovação de Entrega (POD - Proof of Delivery)
+export async function completeDeliveryWithPod(
+  id: string,
+  params: {
+    receiver_name: string
+    receiver_document?: string
+    signature_base64: string
+    pod_photo?: string
+    completed_at?: string
+  },
+): Promise<Delivery> {
+  return await pb.collection('deliveries').update<Delivery>(
+    id,
+    {
+      status: 'delivered',
+      receiver_name: params.receiver_name,
+      receiver_document: params.receiver_document || '',
+      signature_base64: params.signature_base64,
+      pod_photo: params.pod_photo || '',
+      completed_at: params.completed_at || new Date().toISOString(),
+    },
+    { expand: 'vehicle_id,driver_id,trip_id' },
+  )
+}
+
+// Ocorrências de Entrega (Torre de Controle)
+export async function getDeliveryIncidents(deliveryId?: string): Promise<DeliveryIncident[]> {
+  try {
+    const filter = deliveryId ? `delivery_id = "${deliveryId}"` : undefined
+    return await pb.collection('delivery_incidents').getFullList<DeliveryIncident>({
+      filter,
+      sort: '-reported_at',
+      expand: 'delivery_id',
+    })
+  } catch (error) {
+    console.error('Erro ao buscar ocorrências:', error)
+    return []
+  }
+}
+
+export async function createDeliveryIncident(params: {
+  delivery_id: string
+  type: IncidentType
+  description: string
+  reported_at?: string
+}): Promise<DeliveryIncident> {
+  const incident = await pb.collection('delivery_incidents').create<DeliveryIncident>({
+    delivery_id: params.delivery_id,
+    type: params.type,
+    description: params.description,
+    reported_at: params.reported_at || new Date().toISOString(),
+    resolved: false,
+  })
+
+  // Atualiza status da entrega para 'incident'
+  try {
+    await pb.collection('deliveries').update(params.delivery_id, {
+      status: 'incident',
+    })
+  } catch (err) {
+    console.warn('Erro ao atualizar status da entrega para incident:', err)
+  }
+
+  return incident
+}
+
+export async function resolveDeliveryIncident(
+  incidentId: string,
+  deliveryId: string,
+  resolutionNotes: string,
+  newDeliveryStatus: DeliveryStatus = 'in_transit',
+): Promise<DeliveryIncident> {
+  const inc = await pb.collection('delivery_incidents').update<DeliveryIncident>(incidentId, {
+    resolved: true,
+    resolution_notes: resolutionNotes,
+    resolved_at: new Date().toISOString(),
+  })
+
+  try {
+    await pb.collection('deliveries').update(deliveryId, {
+      status: newDeliveryStatus,
+    })
+  } catch (err) {
+    console.warn('Erro ao restaurar status da entrega após resolução:', err)
+  }
+
+  return inc
+}
+
+// Roteirização: salvar sequência de paradas e disparar status 'in_transit'
+export async function saveRouteSequence(params: {
+  route_code: string
+  vehicle_id: string
+  driver_id: string
+  deliveries: { id: string; sequence_order: number }[]
+  startRouteImmediately?: boolean
+}): Promise<boolean> {
+  const { route_code, vehicle_id, driver_id, deliveries, startRouteImmediately = true } = params
+  for (const item of deliveries) {
+    const updateData: Partial<Delivery> = {
+      route_code,
+      vehicle_id,
+      driver_id,
+      sequence_order: item.sequence_order,
+    }
+    if (startRouteImmediately) {
+      updateData.status = 'in_transit'
+    }
+    await pb.collection('deliveries').update(item.id, updateData)
+  }
+  return true
+}
+
+// Auditoria de Frete
+export async function auditDeliveryFreight(
+  id: string,
+  params: {
+    invoiced_freight_value: number
+    expected_freight_value?: number
+    audit_notes?: string
+  },
+): Promise<Delivery> {
+  const current = await pb.collection('deliveries').getOne<Delivery>(id)
+  const expected = params.expected_freight_value ?? current.expected_freight_value ?? 0
+  const invoiced = params.invoiced_freight_value
+  const diff = Math.round((invoiced - expected) * 100) / 100
+  const status: 'ok' | 'divergent' = Math.abs(diff) < 0.01 ? 'ok' : 'divergent'
+
+  return await pb.collection('deliveries').update<Delivery>(
+    id,
+    {
+      expected_freight_value: expected,
+      invoiced_freight_value: invoiced,
+      audit_difference: diff,
+      audit_status: status,
+      audit_notes: params.audit_notes || current.audit_notes || '',
+    },
+    { expand: 'vehicle_id,driver_id,trip_id' },
+  )
 }

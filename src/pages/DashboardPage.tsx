@@ -9,6 +9,7 @@ import {
   getDrivers,
   getCompanySettings,
   getTrafficFines,
+  getDeliveries,
 } from '@/services/logisticsService'
 import type {
   Trip,
@@ -17,6 +18,7 @@ import type {
   Driver,
   CompanySettings,
   TrafficFine,
+  Delivery,
 } from '@/types/logistics'
 import {
   Truck,
@@ -35,6 +37,10 @@ import {
   Calculator,
   Plus,
   AlertTriangle,
+  Package,
+  Radio,
+  Scale,
+  Navigation,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { VpoCalculator } from '@/components/VpoCalculator'
@@ -46,18 +52,20 @@ export const DashboardPage: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [company, setCompany] = useState<CompanySettings | null>(null)
   const [fines, setFines] = useState<TrafficFine[]>([])
+  const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadDashboard() {
       setLoading(true)
-      const [tripsList, ctesList, vehList, drivList, comp, finesList] = await Promise.all([
+      const [tripsList, ctesList, vehList, drivList, comp, finesList, delList] = await Promise.all([
         getTrips(),
         getCteDocuments(),
         getVehicles(),
         getDrivers(),
         getCompanySettings(),
         getTrafficFines(),
+        getDeliveries(),
       ])
       setTrips(tripsList)
       setCtes(ctesList)
@@ -65,6 +73,7 @@ export const DashboardPage: React.FC = () => {
       setDrivers(drivList)
       setCompany(comp)
       setFines(finesList)
+      setDeliveries(delList)
       setLoading(false)
     }
     loadDashboard()
@@ -82,8 +91,22 @@ export const DashboardPage: React.FC = () => {
   const pendingFinesTotal = pendingFines.reduce((acc, f) => acc + (f.amount || 0), 0)
   const totalFinesCount = fines.length
 
-  // Multas Críticas (Vencidas ou Vencendo nos próximos 7 dias)
+  // Métricas de Entregas Fusion (Entregues hoje, em rota, ocorrências, atrasadas)
   const nowMs = Date.now()
+  const deliveredTodayCount = deliveries.filter((d) => d.status === 'delivered').length
+  const inTransitCount = deliveries.filter((d) => d.status === 'in_transit').length
+  const incidentsCount = deliveries.filter((d) => d.status === 'incident').length
+  const delayedDeliveriesCount = deliveries.filter((d) => {
+    if (d.status === 'delivered' || d.status === 'cancelled') return false
+    if (!d.delivery_window_end) return false
+    return new Date(d.delivery_window_end).getTime() < nowMs
+  }).length
+
+  // Métricas de Auditoria de Frete
+  const divergentDeliveries = deliveries.filter((d) => d.audit_status === 'divergent')
+  const totalAuditDivergence = deliveries.reduce((acc, d) => acc + (d.audit_difference || 0), 0)
+
+  // Multas Críticas (Vencidas ou Vencendo nos próximos 7 dias)
   const criticalFines = pendingFines
     .filter((f) => {
       if (!f.due_date) return false
@@ -202,38 +225,137 @@ export const DashboardPage: React.FC = () => {
       {/* Alerta de Boas-vindas / Certificado */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 uppercase">
-              Transporte Rodoviário & VPO Integrado
+              Transporte Rodoviário • VPO • Fusion by nstech
             </span>
             <span className="text-xs text-slate-300">
               {company?.trade_name || 'TransConnect Transportes'}
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-extrabold mt-1 tracking-tight">
-            Painel Geral de Operações e Vale Pedágio
+            Painel de Operações Logísticas Integrado
           </h1>
           <p className="text-xs md:text-sm text-slate-300 max-w-2xl mt-0.5">
-            Gerenciamento de viagens, veículos, motoristas e emissão de CT-e com inclusão automática
-            do VPO conforme Lei 10.209/01 da ANTT.
+            Gestão completa: Roteirização inteligente, Torre de Controle em tempo real, comprovação
+            digital (POD), auditoria de frete e emissão de CT-e com Vale Pedágio Obrigatório (Lei
+            10.209/01).
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link to="/vpo-calc">
+          <Link to="/control-tower">
             <Button size="sm" variant="secondary" className="gap-1.5 text-xs font-semibold">
-              <Calculator className="h-4 w-4 text-indigo-600" />
-              Calculadora VPO
+              <Radio className="h-4 w-4 text-indigo-600 animate-pulse" />
+              Torre de Controle
             </Button>
           </Link>
-          <Link to="/trips">
+          <Link to="/deliveries">
             <Button
               size="sm"
               className="bg-indigo-600 hover:bg-indigo-500 text-white gap-1.5 text-xs font-semibold"
             >
               <Plus className="h-4 w-4" />
-              Nova Viagem
+              Nova Entrega
             </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* NOVO: Bloco de Indicadores da Operação de Entregas & Auditoria (Fusion) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-slate-900 text-white text-[11px] font-mono">FUSION</Badge>
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Monitoramento Operacional de Entregas & Auditoria de Frete
+            </h2>
+          </div>
+          <Link
+            to="/control-tower"
+            className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-1"
+          >
+            Ver Torre de Controle
+            <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <Link
+            to="/deliveries?status=delivered"
+            className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-emerald-400 transition-all group"
+          >
+            <div className="text-slate-500 text-[11px] font-semibold uppercase flex items-center justify-between">
+              <span>Entregues Hoje (POD)</span>
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{deliveredTodayCount}</div>
+            <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Comprovantes salvos</p>
+          </Link>
+
+          <Link
+            to="/deliveries?status=in_transit"
+            className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-blue-400 transition-all group"
+          >
+            <div className="text-blue-700 text-[11px] font-semibold uppercase flex items-center justify-between">
+              <span>Em Rota / Trânsito</span>
+              <Truck className="h-4 w-4 text-blue-600 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl font-bold text-blue-900 mt-1">{inTransitCount}</div>
+            <p className="text-[10px] text-blue-600 mt-0.5">Veículos em rota</p>
+          </Link>
+
+          <Link
+            to="/control-tower?tab=incident"
+            className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-rose-400 transition-all group"
+          >
+            <div className="text-rose-700 text-[11px] font-semibold uppercase flex items-center justify-between">
+              <span>Ocorrências Ativas</span>
+              <AlertTriangle className="h-4 w-4 text-rose-600 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl font-bold text-rose-900 mt-1">{incidentsCount}</div>
+            <p className="text-[10px] text-rose-600 mt-0.5">Exigem intervenção</p>
+          </Link>
+
+          <Link
+            to="/control-tower?tab=delayed"
+            className={`p-3.5 border rounded-xl shadow-xs transition-all group ${
+              delayedDeliveriesCount > 0
+                ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400'
+                : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="text-amber-800 text-[11px] font-semibold uppercase flex items-center justify-between">
+              <span>Atrasadas (SLA)</span>
+              <Clock className="h-4 w-4 text-amber-600 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl font-bold text-amber-950 mt-1">{delayedDeliveriesCount}</div>
+            <p className="text-[10px] text-amber-700 mt-0.5">Janela ultrapassada</p>
+          </Link>
+
+          <Link
+            to="/freight-audit"
+            className={`p-3.5 border rounded-xl shadow-xs transition-all group ${
+              Math.abs(totalAuditDivergence) > 0.01
+                ? 'bg-rose-50/40 border-rose-300 hover:border-rose-400'
+                : 'bg-white border-slate-200 hover:border-indigo-300'
+            }`}
+          >
+            <div className="text-slate-700 text-[11px] font-semibold uppercase flex items-center justify-between">
+              <span>Divergência Frete</span>
+              <Scale className="h-4 w-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+            </div>
+            <div
+              className={`text-xl sm:text-2xl font-bold mt-1 ${
+                totalAuditDivergence > 0 ? 'text-rose-700' : 'text-slate-900'
+              }`}
+            >
+              {totalAuditDivergence > 0 ? '+' : ''}
+              {totalAuditDivergence.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              {divergentDeliveries.length} divergências
+            </p>
           </Link>
         </div>
       </div>
