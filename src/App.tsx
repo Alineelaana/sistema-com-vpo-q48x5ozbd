@@ -15,6 +15,7 @@ import { CtePage } from './pages/CtePage'
 import { VehiclesPage } from './pages/VehiclesPage'
 import { DriversPage } from './pages/DriversPage'
 import { CompanyPage } from './pages/CompanyPage'
+import { FinesPage } from './pages/FinesPage'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/cte" element={<CtePage />} />
               <Route path="/vehicles" element={<VehiclesPage />} />
               <Route path="/drivers" element={<DriversPage />} />
+              <Route path="/fines" element={<FinesPage />} />
               <Route path="/company" element={<CompanyPage />} />
             </Route>
           </Route>

@@ -1,5 +1,12 @@
 import pb from '@/lib/pocketbase/client'
-import type { CompanySettings, Vehicle, Driver, Trip, CteDocument } from '@/types/logistics'
+import type {
+  CompanySettings,
+  Vehicle,
+  Driver,
+  Trip,
+  CteDocument,
+  TrafficFine,
+} from '@/types/logistics'
 
 // Empresa
 export async function getCompanySettings(): Promise<CompanySettings | null> {
@@ -115,4 +122,53 @@ export async function updateCteDocument(
 export async function deleteCteDocument(id: string): Promise<boolean> {
   await pb.collection('cte_documents').delete(id)
   return true
+}
+
+// Multas e Infrações
+export async function getTrafficFines(): Promise<TrafficFine[]> {
+  return await pb.collection('traffic_fines').getFullList<TrafficFine>({
+    sort: '-infraction_date',
+    expand: 'vehicle_id,driver_id',
+  })
+}
+
+export async function createTrafficFine(
+  data: Omit<TrafficFine, 'id' | 'created' | 'updated' | 'expand'>,
+): Promise<TrafficFine> {
+  return await pb.collection('traffic_fines').create<TrafficFine>(data)
+}
+
+export async function updateTrafficFine(
+  id: string,
+  data: Partial<TrafficFine>,
+): Promise<TrafficFine> {
+  return await pb.collection('traffic_fines').update<TrafficFine>(id, data)
+}
+
+export async function deleteTrafficFine(id: string): Promise<boolean> {
+  await pb.collection('traffic_fines').delete(id)
+  return true
+}
+
+export async function markFineAsPaid(id: string, paymentDate?: string): Promise<TrafficFine> {
+  const dateStr = paymentDate || new Date().toISOString()
+  return await pb.collection('traffic_fines').update<TrafficFine>(id, {
+    status: 'paid',
+    payment_date: dateStr,
+  })
+}
+
+export async function registerFineAppeal(
+  id: string,
+  appealNumber: string,
+  notes?: string,
+): Promise<TrafficFine> {
+  const updateData: Partial<TrafficFine> = {
+    status: 'appealed',
+    appeal_number: appealNumber,
+  }
+  if (notes) {
+    updateData.notes = notes
+  }
+  return await pb.collection('traffic_fines').update<TrafficFine>(id, updateData)
 }

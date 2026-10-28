@@ -102,3 +102,44 @@ export interface CteDocument {
   created?: string
   updated?: string
 }
+
+export type InfractionType =
+  | 'speeding'
+  | 'weight_scale'
+  | 'red_light'
+  | 'parking'
+  | 'overtaking'
+  | 'seatbelt'
+  | 'phone_usage'
+  | 'tachograph'
+  | 'other'
+
+export type FineSeverity = 'light' | 'medium' | 'grave' | 'very_grave'
+
+export type FineStatus = 'pending' | 'paid' | 'appealed' | 'cancelled'
+
+export interface TrafficFine {
+  id: string
+  vehicle_id: string
+  driver_id?: string
+  infraction_date: string
+  description: string
+  location?: string
+  infraction_type: InfractionType
+  severity: FineSeverity
+  points: number
+  amount: number
+  notice_number: string
+  issuing_body: string
+  due_date: string
+  status: FineStatus
+  payment_date?: string
+  appeal_number?: string
+  notes?: string
+  expand?: {
+    vehicle_id?: Vehicle
+    driver_id?: Driver
+  }
+  created?: string
+  updated?: string
+}

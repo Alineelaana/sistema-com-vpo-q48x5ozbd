@@ -8,8 +8,16 @@ import {
   getVehicles,
   getDrivers,
   getCompanySettings,
+  getTrafficFines,
 } from '@/services/logisticsService'
-import type { Trip, CteDocument, Vehicle, Driver, CompanySettings } from '@/types/logistics'
+import type {
+  Trip,
+  CteDocument,
+  Vehicle,
+  Driver,
+  CompanySettings,
+  TrafficFine,
+} from '@/types/logistics'
 import {
   Truck,
   TrendingUp,
@@ -26,6 +34,7 @@ import {
   Building2,
   Calculator,
   Plus,
+  AlertTriangle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { VpoCalculator } from '@/components/VpoCalculator'
@@ -36,23 +45,26 @@ export const DashboardPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [company, setCompany] = useState<CompanySettings | null>(null)
+  const [fines, setFines] = useState<TrafficFine[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadDashboard() {
       setLoading(true)
-      const [tripsList, ctesList, vehList, drivList, comp] = await Promise.all([
+      const [tripsList, ctesList, vehList, drivList, comp, finesList] = await Promise.all([
         getTrips(),
         getCteDocuments(),
         getVehicles(),
         getDrivers(),
         getCompanySettings(),
+        getTrafficFines(),
       ])
       setTrips(tripsList)
       setCtes(ctesList)
       setVehicles(vehList)
       setDrivers(drivList)
       setCompany(comp)
+      setFines(finesList)
       setLoading(false)
     }
     loadDashboard()
@@ -63,6 +75,12 @@ export const DashboardPage: React.FC = () => {
   const totalVpo = trips.reduce((acc, t) => acc + (t.vpo_value || 0), 0)
   const activeTripsCount = trips.filter((t) => t.status === 'in_progress').length
   const authorizedCtesCount = ctes.filter((c) => c.status === 'authorized').length
+
+  // Métricas de Multas
+  const pendingFines = fines.filter((f) => f.status === 'pending')
+  const pendingFinesCount = pendingFines.length
+  const pendingFinesTotal = pendingFines.reduce((acc, f) => acc + (f.amount || 0), 0)
+  const totalFinesCount = fines.length
 
   // Economia Connect acumulada estimada (20 minutos por CT-e economizados)
   const totalCtesIssued = ctes.length
@@ -111,7 +129,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Cards de Métricas Principais */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="border-slate-200 shadow-sm hover:shadow transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-medium text-slate-500 uppercase">
@@ -174,6 +192,29 @@ export const DashboardPage: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold text-emerald-700">~{hoursSaved} horas</div>
             <p className="text-xs text-slate-500 mt-1">Economizadas com AutoCT-e Connect</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-200 bg-amber-50/30 shadow-sm hover:shadow transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-medium text-amber-900 uppercase flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+              Multas Pendentes
+            </CardTitle>
+            <Link to="/fines" className="text-amber-700 hover:text-amber-900">
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-950">
+              {pendingFinesTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </div>
+            <p className="text-xs text-amber-700 mt-1 flex items-center justify-between">
+              <span>
+                <strong>{pendingFinesCount}</strong> a pagar
+              </span>
+              <span className="text-slate-500">{totalFinesCount} no total</span>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -317,22 +358,32 @@ export const DashboardPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Card Rápido de Status da Frota */}
+          {/* Card Rápido de Status da Frota e Infrações */}
           <Card className="border-slate-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-xs uppercase font-bold text-slate-500">
-                Resumo Operacional
+              <CardTitle className="text-xs uppercase font-bold text-slate-500 flex items-center justify-between">
+                <span>Resumo Operacional & Frota</span>
+                <Link
+                  to="/fines"
+                  className="text-indigo-600 hover:underline text-[11px] font-normal normal-case"
+                >
+                  Ver infrações
+                </Link>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="p-3 bg-slate-50 rounded-lg">
-                  <div className="text-2xl font-bold text-slate-900">{vehicles.length}</div>
-                  <div className="text-xs text-slate-500">Veículos Cadastrados</div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2.5 bg-slate-50 rounded-lg">
+                  <div className="text-xl font-bold text-slate-900">{vehicles.length}</div>
+                  <div className="text-[11px] text-slate-500">Veículos</div>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-lg">
-                  <div className="text-2xl font-bold text-slate-900">{drivers.length}</div>
-                  <div className="text-xs text-slate-500">Motoristas Ativos</div>
+                <div className="p-2.5 bg-slate-50 rounded-lg">
+                  <div className="text-xl font-bold text-slate-900">{drivers.length}</div>
+                  <div className="text-[11px] text-slate-500">Motoristas</div>
+                </div>
+                <div className="p-2.5 bg-amber-50/70 rounded-lg border border-amber-200/60">
+                  <div className="text-xl font-bold text-amber-900">{pendingFinesCount}</div>
+                  <div className="text-[11px] text-amber-700">Multas a pagar</div>
                 </div>
               </div>
             </CardContent>

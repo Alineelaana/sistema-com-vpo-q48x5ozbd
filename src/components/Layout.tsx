@@ -9,6 +9,7 @@ import {
   FileText,
   Calculator,
   Building2,
+  AlertTriangle,
   LogOut,
   Menu,
   X,
@@ -46,6 +47,7 @@ export default function Layout() {
     { label: 'Documentos CT-e', to: '/cte', icon: FileText },
     { label: 'Veículos / Frota', to: '/vehicles', icon: Truck },
     { label: 'Motoristas', to: '/drivers', icon: Users },
+    { label: 'Multas & Infrações', to: '/fines', icon: AlertTriangle },
     { label: 'Dados da Empresa', to: '/company', icon: Building2 },
   ]
 
