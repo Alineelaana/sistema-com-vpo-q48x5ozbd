@@ -1,0 +1,104 @@
+export interface CompanySettings {
+  id: string
+  corporate_name: string
+  trade_name?: string
+  cnpj: string
+  state_registration?: string
+  rntrc?: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  state?: string
+  certificate_name?: string
+  certificate_validity?: string
+  certificate_status?: 'configured' | 'missing' | 'expired'
+  sefaz_environment?: 'homologation' | 'production'
+  cte_series?: number
+  cte_current_number?: number
+  created?: string
+  updated?: string
+}
+
+export type VehicleType = 'truck' | 'semi_trailer' | 'bitrem' | 'rodotrem' | 'vuc' | 'toco'
+
+export interface Vehicle {
+  id: string
+  plate: string
+  model: string
+  brand?: string
+  axles: number
+  vehicle_type: VehicleType
+  tare_weight_kg?: number
+  capacity_kg?: number
+  renavam?: string
+  status?: 'active' | 'maintenance' | 'inactive'
+  created?: string
+  updated?: string
+}
+
+export interface Driver {
+  id: string
+  name: string
+  cpf: string
+  cnh: string
+  cnh_category?: 'C' | 'D' | 'E'
+  phone?: string
+  status?: 'available' | 'on_trip' | 'vacation' | 'inactive'
+  created?: string
+  updated?: string
+}
+
+export interface Trip {
+  id: string
+  trip_code: string
+  origin_city: string
+  origin_state: string
+  destination_city: string
+  destination_state: string
+  distance_km?: number
+  vehicle_id?: string
+  driver_id?: string
+  cargo_type?: string
+  weight_kg?: number
+  freight_value: number
+  axles_count: number
+  toll_tollgate_count?: number
+  toll_rate_per_axle?: number
+  vpo_value: number
+  vpo_responsible?: 'embarcador' | 'transportador' | 'destinatario'
+  vpo_voucher_number?: string
+  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled'
+  expand?: {
+    vehicle_id?: Vehicle
+    driver_id?: Driver
+  }
+  created?: string
+  updated?: string
+}
+
+export interface CteDocument {
+  id: string
+  cte_number: number
+  series: number
+  access_key?: string
+  trip_id?: string
+  sender_name: string
+  sender_document: string
+  recipient_name: string
+  recipient_document: string
+  cargo_value?: number
+  freight_value: number
+  vpo_included?: boolean
+  vpo_value?: number
+  total_cte_value: number
+  status: 'draft' | 'pending' | 'authorized' | 'rejected' | 'cancelled'
+  status_message?: string
+  protocol?: string
+  issued_at?: string
+  expand?: {
+    trip_id?: Trip
+  }
+  created?: string
+  updated?: string
+}
