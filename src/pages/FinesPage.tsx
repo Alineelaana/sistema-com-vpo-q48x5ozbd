@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useId } from 'react'
+import React, { useEffect, useState, useId, useRef } from 'react'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -132,6 +133,10 @@ export const STATUS_CONFIG: Record<
 
 export const FinesPage: React.FC = () => {
   const { toast } = useToast()
+  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const highlightFineId =
+    searchParams.get('highlight') || (location.hash ? location.hash.replace('#fine-', '') : null)
 
   // Form IDs for accessibility
   const vehicleInputId = useId()
@@ -212,6 +217,19 @@ export const FinesPage: React.FC = () => {
   useEffect(() => {
     loadAll()
   }, [])
+
+  // Efeito para rolar até a multa destacada e focar visualmente
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null)
+  useEffect(() => {
+    if (!loading && highlightFineId && fines.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`fine-${highlightFineId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 300)
+    }
+  }, [loading, highlightFineId, fines])
 
   const loadAll = async () => {
     setLoading(true)
@@ -746,12 +764,30 @@ export const FinesPage: React.FC = () => {
                     fine.due_date &&
                     new Date(fine.due_date).getTime() < Date.now()
 
+                  const isHighlighted = fine.id === highlightFineId
+
                   return (
-                    <TableRow key={fine.id} className="hover:bg-slate-50/60">
+                    <TableRow
+                      key={fine.id}
+                      id={`fine-${fine.id}`}
+                      ref={isHighlighted ? highlightedRowRef : undefined}
+                      className={`transition-colors ${
+                        isHighlighted
+                          ? 'bg-amber-50/90 ring-2 ring-amber-400 ring-inset shadow-sm'
+                          : 'hover:bg-slate-50/60'
+                      }`}
+                    >
                       {/* Auto / Órgão */}
                       <TableCell>
-                        <div className="font-mono font-bold text-slate-900 text-xs">
-                          {fine.notice_number}
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-slate-900 text-xs">
+                            {fine.notice_number}
+                          </span>
+                          {isHighlighted && (
+                            <Badge className="bg-amber-500 text-white text-[9px] px-1 py-0 uppercase animate-pulse">
+                              Destacada
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-500 font-medium">
                           {fine.issuing_body}

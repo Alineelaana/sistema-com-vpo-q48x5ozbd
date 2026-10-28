@@ -20,6 +20,24 @@ export interface CompanySettings {
   updated?: string
 }
 
+export type NotificationType = 'due_soon' | 'overdue'
+
+export interface FineNotification {
+  id: string
+  fine_id: string
+  type: NotificationType
+  title: string
+  message: string
+  days_diff?: number
+  is_read?: boolean
+  read_at?: string
+  created?: string
+  updated?: string
+  expand?: {
+    fine_id?: TrafficFine
+  }
+}
+
 export type VehicleType = 'truck' | 'semi_trailer' | 'bitrem' | 'rodotrem' | 'vuc' | 'toco'
 
 export interface Vehicle {

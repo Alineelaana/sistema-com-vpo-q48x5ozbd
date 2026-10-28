@@ -6,6 +6,7 @@ import type {
   Trip,
   CteDocument,
   TrafficFine,
+  FineNotification,
 } from '@/types/logistics'
 
 // Empresa
@@ -171,4 +172,72 @@ export async function registerFineAppeal(
     updateData.notes = notes
   }
   return await pb.collection('traffic_fines').update<TrafficFine>(id, updateData)
+}
+
+// Notificações de Vencimento de Multas
+export async function getFineNotifications(): Promise<FineNotification[]> {
+  try {
+    return await pb.collection('fine_notifications').getFullList<FineNotification>({
+      sort: '-created',
+      expand: 'fine_id,fine_id.vehicle_id,fine_id.driver_id',
+    })
+  } catch (err) {
+    console.error('Erro ao buscar notificações de multas:', err)
+    return []
+  }
+}
+
+export async function markNotificationAsRead(id: string): Promise<FineNotification> {
+  return await pb.collection('fine_notifications').update<FineNotification>(id, {
+    is_read: true,
+    read_at: new Date().toISOString(),
+  })
+}
+
+export async function markAllNotificationsAsRead(): Promise<boolean> {
+  try {
+    const unread = await pb.collection('fine_notifications').getFullList<FineNotification>({
+      filter: 'is_read = false || is_read = null',
+    })
+    const nowStr = new Date().toISOString()
+    await Promise.all(
+      unread.map((n) =>
+        pb.collection('fine_notifications').update(n.id, {
+          is_read: true,
+          read_at: nowStr,
+        }),
+      ),
+    )
+    return true
+  } catch (err) {
+    console.error('Erro ao marcar todas como lidas:', err)
+    return false
+  }
+}
+
+export async function deleteNotification(id: string): Promise<boolean> {
+  try {
+    await pb.collection('fine_notifications').delete(id)
+    return true
+  } catch (err) {
+    console.error('Erro ao remover notificação:', err)
+    return false
+  }
+}
+
+export async function triggerCheckNotifications(): Promise<{
+  success: boolean
+  generated: number
+  message: string
+}> {
+  try {
+    const res = await pb.send<{ success: boolean; generated: number; message: string }>(
+      '/backend/v1/fines/check-notifications',
+      { method: 'POST' },
+    )
+    return res
+  } catch (err) {
+    console.error('Erro ao acionar verificação de multas:', err)
+    return { success: false, generated: 0, message: 'Erro ao verificar multas' }
+  }
 }

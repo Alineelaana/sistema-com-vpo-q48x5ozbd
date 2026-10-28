@@ -82,6 +82,17 @@ export const DashboardPage: React.FC = () => {
   const pendingFinesTotal = pendingFines.reduce((acc, f) => acc + (f.amount || 0), 0)
   const totalFinesCount = fines.length
 
+  // Multas Críticas (Vencidas ou Vencendo nos próximos 7 dias)
+  const nowMs = Date.now()
+  const criticalFines = pendingFines
+    .filter((f) => {
+      if (!f.due_date) return false
+      const dueTime = new Date(f.due_date).getTime()
+      const diffDays = Math.round((dueTime - nowMs) / (1000 * 60 * 60 * 24))
+      return diffDays <= 7 // vencidas (diffDays < 0) ou até 7 dias
+    })
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+
   // Economia Connect acumulada estimada (20 minutos por CT-e economizados)
   const totalCtesIssued = ctes.length
   const minutesSaved = totalCtesIssued * 20
@@ -89,6 +100,105 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Banner / Bloco de Alerta de Multas Críticas */}
+      {criticalFines.length > 0 && (
+        <div className="p-4 rounded-xl border border-rose-300 bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50 shadow-sm animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-rose-600 text-white shadow-sm mt-0.5 shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-600 text-white uppercase tracking-wider">
+                    Atenção Operacional
+                  </span>
+                  <span className="text-xs font-bold text-rose-900">
+                    {criticalFines.length}{' '}
+                    {criticalFines.length === 1
+                      ? 'multa exige pagamento imediato'
+                      : 'multas exigem pagamento imediato'}
+                  </span>
+                </div>
+                <h2 className="text-sm md:text-base font-extrabold text-slate-900 mt-1">
+                  Multas Vencidas ou com Vencimento nos Próximos 7 Dias
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
+                  Evite bloqueio do veículo no Detran/ANTT, juros moratórios e suspensão de CNH dos
+                  condutores efetuando o pagamento ou registrando recurso em tempo hábil.
+                </p>
+              </div>
+            </div>
+
+            <Link to="/fines" className="shrink-0">
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5 text-xs font-semibold shadow-sm w-full sm:w-auto"
+              >
+                <span>Verificar Todas as Multas</span>
+                <ArrowUpRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+
+          {/* Lista rápida das multas mais críticas */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 mt-3 pt-3 border-t border-rose-200/80">
+            {criticalFines.slice(0, 3).map((fine) => {
+              const dueTime = new Date(fine.due_date).getTime()
+              const diffDays = Math.round((dueTime - nowMs) / (1000 * 60 * 60 * 24))
+              const isOverdue = diffDays < 0
+              const plate = fine.expand?.vehicle_id?.plate || '—'
+              const driver = fine.expand?.driver_id?.name || 'Condutor não informado'
+
+              return (
+                <Link
+                  key={fine.id}
+                  to={`/fines?highlight=${fine.id}#fine-${fine.id}`}
+                  className="p-2.5 rounded-lg bg-white/90 border border-rose-200 hover:border-rose-400 hover:shadow-sm transition-all flex items-center justify-between gap-2 group"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-slate-900">
+                        {fine.notice_number}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[9px] px-1 py-0 ${
+                          isOverdue
+                            ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}
+                      >
+                        {isOverdue
+                          ? `Vencida (${Math.abs(diffDays)}d)`
+                          : `Vence em ${diffDays === 0 ? 'hoje' : diffDays + 'd'}`}
+                      </Badge>
+                    </div>
+                    <div className="text-[11px] text-slate-600 truncate mt-0.5">
+                      Placa: <strong className="font-mono text-slate-800">{plate}</strong> •{' '}
+                      {driver}
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-bold text-slate-900">
+                      {fine.amount.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                    </div>
+                    <span className="text-[10px] text-indigo-600 font-semibold group-hover:underline flex items-center gap-0.5 justify-end mt-0.5">
+                      Pagar
+                      <ArrowUpRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Alerta de Boas-vindas / Certificado */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

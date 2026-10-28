@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-28T22:45:25.234Z",
+  "generatedAt": "2026-10-28T22:52:11.084Z",
   "collections": [
     {
       "name": "users",
@@ -733,6 +733,82 @@
         "CREATE UNIQUE INDEX idx_fines_notice ON traffic_fines (notice_number)",
         "CREATE INDEX idx_fines_status ON traffic_fines (status)",
         "CREATE INDEX idx_fines_vehicle ON traffic_fines (vehicle_id)"
+      ]
+    },
+    {
+      "name": "fine_notifications",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "fine_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "traffic_fines"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["due_soon", "overdue"]
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "days_diff",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_read",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "read_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notif_fine ON fine_notifications (fine_id)",
+        "CREATE INDEX idx_notif_read ON fine_notifications (is_read)",
+        "CREATE INDEX idx_notif_type ON fine_notifications (type)"
       ]
     }
   ]

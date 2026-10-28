@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { NotificationCenter } from '@/components/NotificationCenter'
 
 export default function Layout() {
   const { user, logout, isAuthenticated } = useAuth()
@@ -108,7 +109,7 @@ export default function Layout() {
         {/* Rodapé do Usuário & Logout */}
         <div className="p-3 border-t border-slate-800 bg-slate-950/40">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="min-w-0">
+            <div className="min-w-0 pr-2">
               <div className="text-xs font-semibold text-white truncate">
                 {user?.name || 'Operador Connect'}
               </div>
@@ -116,15 +117,18 @@ export default function Layout() {
                 {user?.email || 'admin@sistema.com'}
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="text-slate-400 hover:text-rose-400 hover:bg-slate-800 h-8 w-8 p-0"
-              title="Sair"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <NotificationCenter />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-slate-400 hover:text-rose-400 hover:bg-slate-800 h-8 w-8 p-0"
+                title="Sair"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="p-2 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
@@ -153,14 +157,17 @@ export default function Layout() {
           </div>
           <span className="font-bold text-sm">Connect VPO</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="text-white hover:bg-slate-800 p-1"
-        >
-          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <NotificationCenter />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-white hover:bg-slate-800 p-1"
+          >
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </Button>
+        </div>
       </div>
 
       {/* Menu Drawer Mobile */}
@@ -200,6 +207,29 @@ export default function Layout() {
 
       {/* Conteúdo Principal */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Barra Superior Desktop com Notificações e Perfil */}
+        <header className="hidden md:flex items-center justify-between px-6 py-3 bg-white border-b border-slate-200">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            Sistema Ativo • Connect VPO & Gestão de Frotas
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="border-r border-slate-200 pr-3">
+              <div className="bg-slate-900 rounded-lg p-0.5">
+                <NotificationCenter />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
+                {(user?.name || 'U').charAt(0)}
+              </div>
+              <span className="text-xs font-semibold text-slate-700">
+                {user?.name || 'Usuário'}
+              </span>
+            </div>
+          </div>
+        </header>
+
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
