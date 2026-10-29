@@ -47,9 +47,11 @@ import {
   toggleUserStatus,
   anonymizeUser,
 } from '@/services/userManagementService'
-import { UserFormModal } from '@/components/UserFormModal'
+import { UserFormModal, type UserFormSubmitData } from '@/components/UserFormModal'
 import { AnonymizeModal } from '@/components/AnonymizeModal'
 import { ExportUserModal } from '@/components/ExportUserModal'
+import pb from '@/lib/pocketbase/client'
+import { formatCPF } from '@/lib/cpfUtils'
 
 export const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([])
@@ -92,11 +94,15 @@ export const UsersPage: React.FC = () => {
   // Filtros
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
+      const s = searchTerm.toLowerCase()
       const matchSearch =
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.name.toLowerCase().includes(s) ||
+        u.email.toLowerCase().includes(s) ||
+        (u.login && u.login.toLowerCase().includes(s)) ||
+        (u.cpf && u.cpf.includes(searchTerm)) ||
+        (u.sequential_code && String(u.sequential_code).includes(searchTerm)) ||
         (u.phone && u.phone.includes(searchTerm)) ||
-        (u.role_title && u.role_title.toLowerCase().includes(searchTerm.toLowerCase()))
+        (u.role_title && u.role_title.toLowerCase().includes(s))
 
       const matchRole = roleFilter === 'all' || u.role === roleFilter
       const matchStatus = statusFilter === 'all' || u.status === statusFilter
@@ -115,47 +121,48 @@ export const UsersPage: React.FC = () => {
     return { total, active, inactive, anonymized, consented }
   }, [users])
 
-  const handleSaveUser = async (data: {
-    id?: string
-    name: string
-    email: string
-    password?: string
-    phone?: string
-    role: UserRole
-    role_title: string
-    data_treatment_purpose: string
-    privacy_accepted: boolean
-    status?: AppUser['status']
-  }) => {
+  const handleSaveUser = async (data: UserFormSubmitData) => {
     if (data.id) {
       // Update
       await updateUser(data.id, {
         name: data.name,
+        login: data.login,
+        cpf: data.cpf,
+        password: data.password,
         phone: data.phone,
         role: data.role,
         role_title: data.role_title,
         data_treatment_purpose: data.data_treatment_purpose,
+        must_change_password: data.must_change_password,
+        inactivity_timeout: data.inactivity_timeout,
+        avatarFile: data.avatarFile,
+        clearAvatar: data.clearAvatar,
         privacy_policy_version: data.privacy_accepted ? 'v1.0' : undefined,
       })
       toast({
         title: 'Usuário atualizado com sucesso',
-        description: 'Permissões e dados sincronizados.',
+        description: 'Permissões, dados e parâmetros de segurança atualizados.',
       })
     } else {
       // Create
       await createUser({
         name: data.name,
         email: data.email,
+        login: data.login,
+        cpf: data.cpf,
         password: data.password || 'Skip@Pass',
         phone: data.phone,
         role: data.role,
         role_title: data.role_title,
         data_treatment_purpose: data.data_treatment_purpose,
         privacy_accepted: data.privacy_accepted,
+        must_change_password: data.must_change_password,
+        inactivity_timeout: data.inactivity_timeout,
+        avatarFile: data.avatarFile,
       })
       toast({
         title: 'Usuário cadastrado com sucesso',
-        description: 'Termo de consentimento e finalidade registrados na auditoria.',
+        description: 'Código sequencial gerado e finalidade registrada na auditoria.',
       })
     }
     await loadData()
@@ -339,11 +346,11 @@ export const UsersPage: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
               <tr>
-                <th className="p-3.5 pl-4">Titular / Usuário</th>
+                <th className="p-3.5 pl-4">Código / Titular</th>
                 <th className="p-3.5">Cargo / Perfil</th>
-                <th className="p-3.5">Situação</th>
+                <th className="p-3.5">Situação & Senha</th>
+                <th className="p-3.5">Segurança & Timeout</th>
                 <th className="p-3.5">Consentimento LGPD</th>
-                <th className="p-3.5">Finalidade Registrada</th>
                 <th className="p-3.5 pr-4 text-right">Ações</th>
               </tr>
             </thead>
@@ -366,6 +373,10 @@ export const UsersPage: React.FC = () => {
                   const roleConfig = USER_ROLES_CONFIG[u.role] || USER_ROLES_CONFIG.readonly
                   const isAnon = u.status === 'anonymized' || u.is_anonymized
 
+                  const avatarUrl = u.avatar
+                    ? pb.files.getURL(u, u.avatar, { thumb: '100x100' })
+                    : null
+
                   return (
                     <tr
                       key={u.id}
@@ -373,23 +384,41 @@ export const UsersPage: React.FC = () => {
                         isAnon ? 'bg-slate-50/50 opacity-75' : ''
                       }`}
                     >
-                      {/* Titular */}
+                      {/* Código e Titular */}
                       <td className="p-3.5 pl-4">
                         <div className="flex items-center gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
-                              isAnon
-                                ? 'bg-rose-100 text-rose-700'
-                                : u.status === 'active'
-                                  ? 'bg-indigo-100 text-indigo-700'
-                                  : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {isAnon ? 'X' : (u.name || 'U').charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 flex items-center gap-1.5 truncate">
-                              {u.name}
+                          {avatarUrl && !isAnon ? (
+                            <img
+                              src={avatarUrl}
+                              alt={u.name}
+                              className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
+                                isAnon
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : u.status === 'active'
+                                    ? 'bg-indigo-100 text-indigo-700'
+                                    : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {isAnon ? 'X' : (u.name || 'U').charAt(0)}
+                            </div>
+                          )}
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              {u.sequential_code && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 font-bold bg-slate-100 border-slate-300 text-slate-700"
+                                >
+                                  #{u.sequential_code}
+                                </Badge>
+                              )}
+                              <span className="font-semibold text-slate-900 truncate">
+                                {u.name}
+                              </span>
                               {isAnon && (
                                 <Badge
                                   variant="outline"
@@ -399,8 +428,18 @@ export const UsersPage: React.FC = () => {
                                 </Badge>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-500 truncate">{u.email}</div>
-                            {u.phone && <div className="text-[10px] text-slate-400">{u.phone}</div>}
+                            <div className="text-[11px] text-slate-600 flex items-center gap-2 flex-wrap">
+                              {u.login && (
+                                <span className="text-indigo-600 font-mono text-[10px] bg-indigo-50/70 px-1 rounded">
+                                  login: {u.login}
+                                </span>
+                              )}
+                              <span className="text-slate-500 truncate">{u.email}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {u.cpf && <span>CPF: {formatCPF(u.cpf)}</span>}
+                              {u.phone && <span>• {u.phone}</span>}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -422,24 +461,52 @@ export const UsersPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Situação */}
+                      {/* Situação e Troca de Senha */}
                       <td className="p-3.5">
-                        {u.status === 'active' ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Ativo
-                          </span>
-                        ) : u.status === 'anonymized' ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                            <UserX className="h-3 w-3" />
-                            Anonimizado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                            <XCircle className="h-3 w-3" />
-                            Inativo
-                          </span>
-                        )}
+                        <div className="space-y-1">
+                          <div>
+                            {u.status === 'active' ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Ativo
+                              </span>
+                            ) : u.status === 'anonymized' ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                <UserX className="h-3 w-3" />
+                                Anonimizado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                <XCircle className="h-3 w-3" />
+                                Inativo
+                              </span>
+                            )}
+                          </div>
+                          {u.must_change_password && (
+                            <div>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-amber-50 text-amber-800 border-amber-300 font-medium px-1.5 py-0"
+                              >
+                                Troca de senha pendente
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Segurança & Timeout */}
+                      <td className="p-3.5">
+                        <div className="space-y-0.5 text-[11px]">
+                          <div className="text-slate-700 font-medium">
+                            {u.inactivity_timeout || 30} min de inatividade
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {u.inactivity_timeout
+                              ? 'Configuração própria'
+                              : 'Default do sistema (30 min)'}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Consentimento */}
@@ -459,16 +526,6 @@ export const UsersPage: React.FC = () => {
                             Pendente aceite
                           </span>
                         )}
-                      </td>
-
-                      {/* Finalidade */}
-                      <td className="p-3.5 max-w-xs">
-                        <div
-                          className="text-[11px] text-slate-600 line-clamp-2"
-                          title={u.data_treatment_purpose}
-                        >
-                          {u.data_treatment_purpose || 'Cumprimento de contrato e transporte'}
-                        </div>
                       </td>
 
                       {/* Ações */}

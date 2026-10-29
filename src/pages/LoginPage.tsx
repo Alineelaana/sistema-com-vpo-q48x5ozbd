@@ -32,7 +32,7 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
 
   // Login form
-  const [loginEmail, setLoginEmail] = useState('alineelaana@gmail.com')
+  const [loginIdentifier, setLoginIdentifier] = useState('alineelaana@gmail.com')
   const [loginPassword, setLoginPassword] = useState('Skip@Pass')
 
   // Signup form
@@ -47,7 +47,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault()
     setLoading(true)
     try {
-      await login(loginEmail, loginPassword)
+      await login(loginIdentifier, loginPassword)
       toast({
         title: 'Login realizado com sucesso',
         description: 'Bem-vindo ao Sistema de Emissão e VPO!',
@@ -57,7 +57,9 @@ export const LoginPage: React.FC = () => {
       console.error(err)
       toast({
         title: 'Falha no login',
-        description: 'E-mail ou senha inválidos. Tente o usuário padrão fornecido.',
+        description:
+          (err as { message?: string })?.message ||
+          'Login/E-mail ou senha inválidos. Verifique suas credenciais.',
         variant: 'destructive',
       })
     } finally {
@@ -182,16 +184,16 @@ export const LoginPage: React.FC = () => {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
                   <Label htmlFor={loginEmailId} className="text-xs text-slate-300">
-                    E-mail
+                    Login (Nome de Usuário) ou E-mail
                   </Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                    <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                     <Input
                       id={loginEmailId}
-                      type="email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="seu.email@transportadora.com.br"
+                      type="text"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      placeholder="Ex: alineelaana ou email@transconnect.com.br"
                       required
                       className="pl-9 bg-slate-900 border-slate-800 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
                     />
@@ -230,7 +232,8 @@ export const LoginPage: React.FC = () => {
                     Credenciais de Teste / Padrão:
                   </span>
                   <div>
-                    E-mail: <strong className="text-indigo-300">alineelaana@gmail.com</strong>
+                    Login / E-mail: <strong className="text-indigo-300">alineelaana</strong> ou{' '}
+                    <strong className="text-indigo-300">alineelaana@gmail.com</strong>
                   </div>
                   <div>
                     Senha: <strong className="text-indigo-300">Skip@Pass</strong>

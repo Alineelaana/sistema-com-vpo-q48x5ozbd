@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-28T23:55:30.753Z",
+  "generatedAt": "2026-10-29T00:20:28.465Z",
   "collections": [
     {
       "name": "users",
@@ -87,11 +87,44 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "login",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "must_change_password",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "inactivity_timeout",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sequential_code",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
-        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''",
+        "CREATE UNIQUE INDEX `idx_users_login` ON `users` (login) WHERE login != ''",
+        "CREATE UNIQUE INDEX `idx_users_cpf` ON `users` (cpf) WHERE cpf != ''",
+        "CREATE UNIQUE INDEX `idx_users_sequential_code` ON `users` (sequential_code) WHERE sequential_code > 0"
       ]
     },
     {

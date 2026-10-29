@@ -30,13 +30,27 @@ import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import type { AppModule } from '@/types/userManagement'
 import { ProfileModal } from '@/components/ProfileModal'
+import { ForceChangePasswordModal } from '@/components/ForceChangePasswordModal'
+import pb from '@/lib/pocketbase/client'
 
 export default function Layout() {
-  const { user, currentUser, role, roleConfig, hasPermission, logout, isAuthenticated } = useAuth()
+  const {
+    user,
+    currentUser,
+    role,
+    roleConfig,
+    hasPermission,
+    logout,
+    isAuthenticated,
+    mustChangePasswordPending,
+  } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+
+  // Avatar URL helper
+  const avatarUrl = user?.avatar ? pb.files.getURL(user, user.avatar, { thumb: '100x100' }) : null
 
   // Se estiver na tela de login, não mostra sidebar
   if (location.pathname === '/login') {
@@ -207,15 +221,28 @@ export default function Layout() {
             <button
               type="button"
               onClick={() => setProfileModalOpen(true)}
-              className="min-w-0 pr-2 text-left hover:opacity-80 transition-opacity"
+              className="min-w-0 pr-2 text-left hover:opacity-80 transition-opacity flex items-center gap-2"
               title="Clique para gerenciar seu perfil"
             >
-              <div className="text-xs font-semibold text-white truncate flex items-center gap-1.5">
-                <span>{user?.name || 'Operador Connect'}</span>
-              </div>
-              <div className="text-[10px] text-indigo-400 font-medium truncate flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                {roleConfig.label}
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'Avatar'}
+                  className="w-8 h-8 rounded-full object-cover border border-slate-700 shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                  {(user?.name || 'U').charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-white truncate">
+                  {user?.name || 'Operador Connect'}
+                </div>
+                <div className="text-[10px] text-indigo-400 font-medium truncate flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  {roleConfig.label}
+                </div>
               </div>
             </button>
             <div className="flex items-center gap-1 shrink-0">
@@ -338,9 +365,17 @@ export default function Layout() {
               className="flex items-center gap-2 hover:bg-slate-50 p-1 rounded-lg transition-colors text-left"
               title="Gerenciar Meu Perfil"
             >
-              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
-                {(user?.name || 'U').charAt(0)}
-              </div>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'Avatar'}
+                  className="w-7 h-7 rounded-full object-cover border border-indigo-200"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
+                  {(user?.name || 'U').charAt(0)}
+                </div>
+              )}
               <div>
                 <span className="text-xs font-semibold text-slate-700 block leading-tight">
                   {user?.name || 'Usuário'}
@@ -359,6 +394,9 @@ export default function Layout() {
 
         {/* Modal de Gestão do Próprio Perfil */}
         <ProfileModal open={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
+
+        {/* Modal Forçado de Troca de Senha Obrigatória no Próximo Acesso */}
+        <ForceChangePasswordModal open={mustChangePasswordPending} onSuccess={() => {}} />
       </main>
     </div>
   )

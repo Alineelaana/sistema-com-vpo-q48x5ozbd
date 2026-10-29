@@ -6,6 +6,12 @@ export interface AppUser {
   id: string
   name: string
   email: string
+  login?: string
+  cpf?: string
+  sequential_code?: number
+  avatar?: string
+  must_change_password?: boolean
+  inactivity_timeout?: number
   phone?: string
   role: UserRole
   role_title?: string
