@@ -443,6 +443,7 @@ export const INSURANCE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Cadastro e controle de vigência de apólices de seguro (Porto Seguro, Tokio Marine, Sompo)',
     'Geração de dossiê de averbação com valor declarado e chave fiscal da carga',
     'Registro do protocolo de averbação e comprovante retornado pela seguradora ou AT&M',
+    'Envio automático do comprovante de averbação pelo Agente de Envio (Etapa 4) aos destinatários cadastrados, com anexo do arquivo de retorno e controle anti-duplicidade',
     'Bloqueio automático de despacho de viagem sem seguro ativo quando configurado na Empresa',
     'Despacho de comprovante na Etapa 4 para clientes que exigem compliance securitário prévio',
   ],
@@ -461,7 +462,8 @@ export const INSURANCE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'Lei nº 14.599/2023: o seguro RCTR-C é de contratação e averbação obrigatória do transportador.',
     'Carga sem averbação confirmada permanece na fila com status honesto.',
-    'Somente averbações com confirmação e protocolo AT&M/Seguradora são elegíveis para envio na Etapa 4.',
+    'Somente averbações com confirmação e protocolo AT&M/Seguradora (status "averbada") e comprovante anexável são elegíveis para envio na Etapa 4; caso sem anexo retornado, registra pendência detalhada sem simular disparo.',
+    'Salvaguarda anti-duplicidade: a chave [tipo_doc]_[id]_[email] impede reenvio da mesma averbação para o mesmo destinatário.',
   ],
   agentsAndAutomations: [
     'Agente de regularização fiscal monta o dossiê de averbação para cada viagem identificada.',

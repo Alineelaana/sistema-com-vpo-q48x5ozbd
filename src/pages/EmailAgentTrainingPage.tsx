@@ -90,9 +90,9 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   realFeatures: [
     'PRIORIDADE 4: Gestão do Agente de Envio Automático de Documentos aos Destinatários (ativação/pausa, intervalo cron e limite de tentativas)',
     'PRIORIDADE 4: Cadastro de Destinatários de Documentos por cliente/operação com papéis, e-mails (direto e CC) e tipos de documento autorizados (CT-e, MDF-e, CIOT, Seguro, VPO)',
-    'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas por documento (CT-e, MDF-e, CIOT ANTT e Averbação/Seguro com tags {{nome_cliente}}, {{numero_documento}}, {{provedor_ipef}}, {{perfil_transportador}}, {{valor_frete}}, {{viagem}}, etc.)',
-    'PRIORIDADE 4: Modelo de e-mail dedicado para CIOT Registrado (ANTT), com tags da operação de transporte, dados da IPEF credenciada e anexo do comprovante digital',
-    'PRIORIDADE 4: Regra inegociável de envio seguro: apenas documentos com autorização fiscal REAL (status authorized / registered / averbada) são despachados',
+    'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas por documento (CT-e, MDF-e, CIOT ANTT e Averbação de Seguro com tags {{nome_cliente}}, {{numero_documento}}, {{seguradora}}, {{numero_apolice}}, {{ramo_seguro}}, {{valor_carga}}, {{comprovante_arquivo}}, {{viagem}}, etc.)',
+    'PRIORIDADE 4: Modelo de e-mail dedicado para CIOT Registrado (ANTT) e para Averbação de Seguro Concluída (Lei 14.599/2023), com atalhos dedicados de criação e anexo automático do comprovante digital',
+    'PRIORIDADE 4: Regra inegociável de envio seguro: apenas averbações com status oficial "averbada" e com comprovante retornado (PDF/XML) são despachadas; sem comprovante, gera pendência honesta com motivo',
     'PRIORIDADE 4: Controle anti-duplicidade estrito por chave única (document_type + document_id + email)',
     'Gestão completa de regras de e-mail (criação, edição, aprovação por administrador, rejeição e exclusão)',
     'Conectores Gmail e Outlook configurados no modo "cada usuário conecta sua própria caixa"',
@@ -111,6 +111,12 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
       name: 'Novo Destinatário de Documentos',
       type: 'Botão com Modal',
       purpose: 'Cadastra cliente/parceiro que deve receber os arquivos fiscais autorizados.',
+    },
+    {
+      name: 'Criar Modelo Averbação',
+      type: 'Botão de Atalho Rápido',
+      purpose:
+        'Abre o modal já pré-carregado com os parâmetros, texto e tags legais da Averbação de Seguro Concluída (Lei 14.599/2023).',
     },
     {
       name: 'Novo Modelo de E-mail',
@@ -529,6 +535,17 @@ export const EmailAgentTrainingPage: React.FC = () => {
       )
       setTmplDesc(
         'Modelo dedicado para envio automático de comprovante de CIOT aos destinatários e motoristas.',
+      )
+    } else if (targetType === 'insurance') {
+      setTmplName('Modelo Específico - Averbação de Seguro Concluída')
+      setTmplSubject(
+        '{{empresa_emissora}} - Comprovante de Averbação de Seguro nº {{numero_documento}} (Viagem {{viagem}})',
+      )
+      setTmplBody(
+        `Prezado(a) {{nome_cliente}},\n\nInformamos que a averbação de seguro da operação referente à Viagem {{viagem}} foi devidamente confirmada e concluída sob o protocolo {{protocolo_autorizacao}}.\n\nDados da Cobertura e Averbação:\n- Protocolo da Averbação: {{numero_documento}}\n- Seguradora: {{seguradora}}\n- Nº da Apólice: {{numero_apolice}}\n- Ramo / Cobertura: {{ramo_seguro}}\n- Valor Declarado da Carga: {{valor_carga}}\n- Chave Fiscal Vinculada: {{chave_documento}}\n- Data da Averbação: {{data_documento}}\n\nO comprovante digital retornado pela seguradora/AT&M (arquivo {{comprovante_arquivo}}) encontra-se anexado a esta mensagem em estrito cumprimento à Lei nº 14.599/2023.\n\nAtenciosamente,\nDepartamento de Gestão de Riscos & Seguros • {{empresa_emissora}}`,
+      )
+      setTmplDesc(
+        'Modelo dedicado para envio automático de comprovante de averbação aos embarcadores e tomadores de seguro.',
       )
     } else {
       setTmplName('')
@@ -1051,6 +1068,15 @@ export const EmailAgentTrainingPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="outline"
+                onClick={() => handleOpenCreateTemplate('insurance')}
+                className="text-xs font-semibold border-emerald-300 text-emerald-800 hover:bg-emerald-50 gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5 text-emerald-600" />
+                Criar Modelo Averbação
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={() => handleOpenCreateTemplate('ciot')}
                 className="text-xs font-semibold border-indigo-200 text-indigo-700 hover:bg-indigo-50 gap-1.5"
               >
@@ -1072,6 +1098,7 @@ export const EmailAgentTrainingPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {templates.map((tmpl) => {
               const isCiot = tmpl.document_type === 'ciot'
+              const isInsurance = tmpl.document_type === 'insurance'
               const docTypeLabel =
                 tmpl.document_type === 'cte'
                   ? 'CT-e'
@@ -1080,7 +1107,7 @@ export const EmailAgentTrainingPage: React.FC = () => {
                     : tmpl.document_type === 'ciot'
                       ? 'CIOT (ANTT)'
                       : tmpl.document_type === 'insurance'
-                        ? 'Seguro / Averbação'
+                        ? 'Averbação de Seguro'
                         : tmpl.document_type === 'vpo'
                           ? 'Vale Pedágio (VPO)'
                           : 'Dossiê Fiscal'
@@ -1089,7 +1116,11 @@ export const EmailAgentTrainingPage: React.FC = () => {
                 <div
                   key={tmpl.id}
                   className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between space-y-3 ${
-                    isCiot ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-slate-200'
+                    isInsurance
+                      ? 'border-emerald-300 ring-1 ring-emerald-100'
+                      : isCiot
+                        ? 'border-indigo-300 ring-1 ring-indigo-100'
+                        : 'border-slate-200'
                   }`}
                 >
                   <div>
@@ -1186,12 +1217,29 @@ export const EmailAgentTrainingPage: React.FC = () => {
               <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-300 text-indigo-800 font-bold">
                 {'{{valor_frete}}'}
               </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
+                {'{{seguradora}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
+                {'{{numero_apolice}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
+                {'{{ramo_seguro}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
+                {'{{valor_carga}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
+                {'{{comprovante_arquivo}}'}
+              </code>
             </div>
             <p className="text-[10px] text-slate-500 pt-1">
-              * Para modelos de CIOT, utilize <code>{'{{numero_documento}}'}</code> para o código
-              CIOT oficial, <code>{'{{protocolo_autorizacao}}'}</code> para o protocolo do
-              comprovante IPEF, além de <code>{'{{provedor_ipef}}'}</code>,{' '}
-              <code>{'{{perfil_transportador}}'}</code> e <code>{'{{valor_frete}}'}</code>.
+              * Para modelos de <strong>CIOT</strong>, utilize <code>{'{{provedor_ipef}}'}</code>,{' '}
+              <code>{'{{perfil_transportador}}'}</code> e <code>{'{{valor_frete}}'}</code>. Para
+              modelos de <strong>Averbação de Seguro</strong>, utilize{' '}
+              <code>{'{{seguradora}}'}</code>, <code>{'{{numero_apolice}}'}</code>,{' '}
+              <code>{'{{ramo_seguro}}'}</code>, <code>{'{{valor_carga}}'}</code> e{' '}
+              <code>{'{{comprovante_arquivo}}'}</code> (anexo automático).
             </p>
           </div>
         </CardContent>

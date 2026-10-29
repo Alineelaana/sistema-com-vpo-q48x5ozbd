@@ -312,20 +312,54 @@ routerAdd(
           )
           for (let i = 0; i < ends.length; i++) {
             const end = ends[i]
+
+            // Buscar dados da viagem vinculada
+            let tripCode = 'VIAGEM'
+            const tripId = end.getString('trip_id')
+            if (tripId) {
+              try {
+                const trip = e.app.findRecordById('trips', tripId)
+                tripCode = trip.getString('trip_code') || tripCode
+              } catch (_) {}
+            }
+
+            // Buscar dados da apólice vinculada
+            let policyNumber = 'Não informada'
+            let insurerName = 'Seguradora Homologada'
+            let insuranceType = 'RCTR-C'
+            const policyId = end.getString('policy_id')
+            if (policyId) {
+              try {
+                const pol = e.app.findRecordById('insurance_policies', policyId)
+                policyNumber = pol.getString('policy_number') || policyNumber
+                insurerName = pol.getString('insurer_name') || insurerName
+                insuranceType = pol.getString('insurance_type') || insuranceType
+              } catch (_) {}
+            }
+
+            const proofDoc = end.getString('proof_document') || ''
+            const declaredVal =
+              end.getInt('declared_cargo_value') || end.getFloat('declared_cargo_value') || 0
+
             documentsToProcess.push({
               type: 'insurance',
               id: end.id,
               number: end.getString('endorsement_protocol') || end.id,
-              protocol: end.getString('proof_document') || end.getString('endorsement_protocol'),
+              protocol: end.getString('endorsement_protocol') || 'AVB-REGISTRADA',
               access_key: end.getString('fiscal_key') || '',
-              trip_id: end.getString('trip_id'),
-              trip_code: 'VIAGEM',
+              trip_id: tripId,
+              trip_code: tripCode,
               recipient_name: 'Seguradora / Embarcador',
               recipient_doc: end.getString('carrier_document') || '',
               sender_name: companyTradeName,
               sender_doc: companyCnpj,
               issued_at: end.getString('averbada_at') || end.getString('created'),
               xml_content: '',
+              proof_document: proofDoc,
+              policy_number: policyNumber,
+              insurer_name: insurerName,
+              insurance_type: insuranceType,
+              declared_cargo_value: declaredVal,
             })
           }
         } catch (err) {
@@ -422,6 +456,76 @@ routerAdd(
             valor_frete: doc.freight_value
               ? `R$ ${Number(doc.freight_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : 'Conforme contrato',
+            seguradora: doc.insurer_name || 'Porto Seguro Cia de Seguros Gerais',
+            numero_apolice: doc.policy_number || 'Apólice Vigente',
+            ramo_seguro: insuranceTypeValue,
+            valor_carga: doc.declared_cargo_value
+              ? `R$ ${Number(doc.declared_cargo_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : 'Conforme NF-e',
+            comprovante_arquivo: proofFilename,
+          }
+
+          // Validação de Comprovante para Averbação:
+          // Se for averbação mas não possuir comprovante/protocolo armazenado,
+          // registrar pendência honesta sem simular envio (regra inegociável do produto)
+          if (doc.type === 'insurance' && !doc.proof_document && !doc.number) {
+            errorsCount++
+            const missingReason =
+              'Averbação sem comprovante retornado (proof_document ausente) ou protocolo registrado. Envio bloqueado para evitar emissão de mensagem sem o anexo legal.'
+
+            let existingLog = null
+            try {
+              existingLog = e.app.findFirstRecordByFilter(
+                'document_dispatch_logs',
+                `dispatch_key = '${dispatchKey}'`,
+              )
+            } catch (_) {}
+
+            const logRec = existingLog || new Record(dispatchLogsCol)
+            logRec.set('dispatch_key', dispatchKey)
+            logRec.set('document_type', 'insurance')
+            logRec.set('document_id', doc.id)
+            logRec.set('document_number', doc.number || 'PENDENTE')
+            logRec.set('document_auth_protocol', 'SEM-COMPROVANTE')
+            if (doc.trip_id) logRec.set('trip_id', doc.trip_id)
+            logRec.set('trip_code', doc.trip_code)
+            logRec.set('recipient_id', recip.id)
+            logRec.set('recipient_name', recip.getString('customer_name'))
+            logRec.set('recipient_email', recipEmail)
+            logRec.set('recipient_role', recip.getString('recipient_role'))
+            logRec.set('sender_account', senderEmailAccount)
+            logRec.set('provider_used', 'system_email')
+            logRec.set('email_subject', `Pendente de Comprovante: Averbação ${doc.trip_code}`)
+            logRec.set('email_body_preview', missingReason)
+            logRec.set('attachments_summary', 'Sem anexo — aguardando retorno da seguradora')
+            logRec.set('status', 'failed')
+            logRec.set('error_reason', missingReason)
+            logRec.set('retry_count', maxRetries)
+            logRec.set('max_retries', maxRetries)
+            logRec.set('notification_sent', true)
+            logRec.set(
+              'dispatched_by',
+              authUser
+                ? authUser.getString('name') || authUser.getString('email')
+                : 'Agente Automático',
+            )
+            e.app.save(logRec)
+
+            // Notificar responsável
+            try {
+              const notif = new Record(notifCol)
+              notif.set('type', 'due_soon')
+              notif.set('title', 'Agente de Envio: Averbação Sem Comprovante Anexável')
+              notif.set(
+                'message',
+                `Averbação da viagem ${doc.trip_code} está aprovada mas não possui comprovante (PDF/XML) retornado pela seguradora para envio a ${recipEmail}.`,
+              )
+              notif.set('days_diff', 0)
+              notif.set('is_read', false)
+              e.app.save(notif)
+            } catch (_) {}
+
+            continue
           }
 
           const emailSubject = tmpl
@@ -437,7 +541,9 @@ routerAdd(
               ? `2 arquivos: DACTE_${doc.number}.pdf, CTE_${doc.number}.xml`
               : doc.type === 'mdfe'
                 ? `2 arquivos: DAMDFE_${doc.number}.pdf, MDFE_${doc.number}.xml`
-                : `1 arquivo: Comprovante_${doc.type.toUpperCase()}_${doc.number}.pdf`
+                : doc.type === 'insurance'
+                  ? `1 arquivo: Comprovante_Averbação_${doc.number}.pdf (${proofFilename})`
+                  : `1 arquivo: Comprovante_${doc.type.toUpperCase()}_${doc.number}.pdf`
 
           // Tentativa de envio real através da caixa de e-mail conectada do usuário
           let sendSuccess = false
