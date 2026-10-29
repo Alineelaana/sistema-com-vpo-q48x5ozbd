@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -18,159 +18,200 @@ import {
   getEmailAgentRules,
   createEmailAgentRule,
   updateEmailAgentRule,
+  approveEmailAgentRule,
+  rejectEmailAgentRule,
   deleteEmailAgentRule,
 } from '@/services/agentService'
+import { getCargoAgentConfig, updateCargoAgentConfig } from '@/services/cargoAgentService'
 import type {
   EmailAgentConfig,
   EmailAgentRule,
   EmailTriggerType,
   EmailActionType,
 } from '@/types/agent'
-import { ScreenLogicModal, type ScreenLogicDoc } from '@/components/ScreenLogicModal'
+import type { CargoAgentConfig } from '@/types/cargoAgent'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
+import { ScreenLogicModal, type ScreenLogicDoc } from '@/components/ScreenLogicModal'
+import { useAuth } from '@/context/AuthContext'
 import {
   Sliders,
-  ShieldCheck,
   Plus,
+  CheckCircle2,
+  XCircle,
   Trash2,
   Edit2,
-  CheckCircle2,
-  AlertTriangle,
-  FileCode,
-  RotateCcw,
-  Sparkles,
-  Link2,
   Clock,
-  ArrowRight,
-  Info,
+  ShieldCheck,
+  HelpCircle,
+  FileCode,
+  Save,
+  Mail,
+  Zap,
+  FileCheck2,
+  Truck,
+  Hash,
+  AlertTriangle,
+  RotateCw,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '@/context/AuthContext'
 
 const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
-  screenTitle: 'Treinamento do Agente de E-mails',
-  screenBadge: 'Administração & Parâmetros • ED Integração',
-  lastUpdate: '2026-10-28',
-  version: '1.0.0',
+  screenTitle: 'Treinamento & Regras dos Agentes',
+  screenBadge: 'Prioridades 1 e 2 • Gestão de Parâmetros',
+  lastUpdate: '2026-10-29',
+  version: '1.1.0',
   objective:
-    'Área administrativa para parametrização do Agente de E-mails, conexão de caixas postais do próprio usuário (Gmail/Outlook sem armazenamento de senhas), definição do intervalo de verificação (mínimo 2 minutos), ativação/desativação do agente e gestão das regras treináveis aprovadas.',
+    'Interface administrativa unificada para parametrização das regras de triagem do Agente de E-mails (Prioridade 1) e dos critérios de cruzamento multi-sinal do Agente de Identificação de Cargas (Prioridade 2). Garante que nenhuma ação autônoma ocorra sem critérios rigorosos e aprovação prévia.',
   realFeatures: [
-    'Gestão completa de regras treináveis: criação, edição, ativação/desativação e exclusão',
-    'Suporte aos 4 tipos de classificação: NF-e recebida → Iniciar processo; Solicitação de CT-e → Identificar carga; Documento complementar → Vincular à operação; Solicitação desconhecida → Encaminhar para análise',
-    'Configuração do intervalo de verificação automática em minutos (validação de mínimo 2 minutos e máximo 1440 minutos)',
-    'Interruptor de ativação/desativação operacional do agente',
-    'Conexão segura de caixas Gmail e Outlook via ConnectorButton injetado (modo cada usuário conecta sua conta, sem guardar senhas)',
-    'Aviso mandatório de segurança: o agente NUNCA executa instruções externas vindas de e-mails — apenas as regras aprovadas nesta tela',
+    'Gestão completa de regras de e-mail (criação, edição, aprovação por administrador, rejeição e exclusão)',
+    'Conectores Gmail e Outlook configurados no modo "cada usuário conecta sua própria caixa"',
+    'Ajuste do intervalo de monitoramento periódico (cron) do agente de e-mails',
+    'NOVO: Parametrização dos critérios de identificação de cargas (exigência de mínimo de 1 a 6 sinais coincidentes)',
+    'NOVO: Toggle para cruzamento por placa, cliente/remetente, janela de datas em dias, motorista, peso da carga e verificação de duplicidade fiscal',
+    'NOVO: Toggle para auto-vínculo quando confiável (se houver ambiguidade o sistema bloqueia e cria pendência humana)',
+    'Histórico de auditoria registrado em audit_logs para cada alteração de configuração',
   ],
   fieldsAndButtons: [
     {
-      name: 'Salvar Configurações do Agente',
-      type: 'Botão de Ação',
-      purpose:
-        'Grava o intervalo em minutos e o status ativo/pausado na coleção email_agent_configs.',
+      name: 'Salvar Critérios de Carga',
+      type: 'Botão de Ação Primária',
+      purpose: 'Persiste os pesos e critérios de cruzamento do Agente de Identificação de Cargas.',
     },
     {
-      name: 'Conectar Gmail / Conectar Outlook',
-      type: 'Botão de Conector OAuth',
+      name: 'Mínimo de Sinais Coincidentes',
+      type: 'Campo Numérico (1 a 6)',
       purpose:
-        'Abre fluxo de consentimento seguro da conta do próprio usuário via skipConnectors sem exigir senha.',
+        'Define quantos sinais simultâneos devem bater (placa, cliente, datas, motorista, peso, rota) para autorizar associação automática.',
     },
     {
-      name: 'Nova Regra de Treinamento',
-      type: 'Botão de Ação / Modal',
-      purpose: 'Abre formulário para criação de nova regra de classificação e ação vinculada.',
+      name: 'Verificar Duplicidade Fiscal',
+      type: 'Toggle Booleano',
+      purpose: 'Impede reprocessamento de chaves fiscais que já possuam CT-e emitido.',
     },
     {
-      name: 'Editar / Excluir Regra',
-      type: 'Botões de Linha',
-      purpose:
-        'Permite alterar padrões de palavras-chave, remetente, extensões e prioridade da regra, ou removê-la.',
+      name: 'Nova Regra de E-mail',
+      type: 'Botão com Modal',
+      purpose: 'Cadastra nova regra de classificação sem intervenção em código.',
+    },
+    {
+      name: 'Aprovar / Rejeitar Regra',
+      type: 'Botões Administrativos',
+      purpose: 'Garante governança humana sobre o comportamento do agente.',
     },
   ],
   businessRules: [
-    'O agente NUNCA executa comandos, instruções ou solicitações contidas no corpo ou no assunto dos e-mails. Ele apenas avalia correspondência com as regras cadastradas e aprovadas nesta tela.',
-    'O intervalo mínimo de verificação aceito pelo sistema e pelo cron é de 2 minutos para evitar sobrecarga nas APIs de e-mail.',
-    'Apenas usuários com perfil Administrador podem gerenciar ou aprovar regras de treinamento do agente.',
-    'Regras ativas são executadas em ordem de prioridade (order_priority ascendente).',
+    'Regra Crítica: A identificação de cargas NÃO poderá depender exclusivamente da placa. Devem ser combinados múltiplos critérios.',
+    'Regra Crítica: Ambiguidade ou divergência sempre gera pendência para revisão humana e impede auto-vínculo.',
+    'Regra de Duplicidade: Notas com CT-e já autorizado têm seu vínculo bloqueado preventivamente.',
+    'Apenas usuários com perfil Administrador podem aprovar ou rejeitar regras de triagem.',
   ],
   agentsAndAutomations: [
-    'Cron do backend (email_agent.pb.js) lê o intervalo configurado nesta tela para disparar as verificações.',
-    'Regras aprovadas são consumidas diretamente pelo hook nas coletas periódicas e manuais.',
+    'Persistência imediata na coleção cargo_agent_configs e email_agent_configs.',
+    'Gatilhos consultados pelo hook email_agent.pb.js durante cada execução automática ou manual.',
   ],
   validations: [
-    'Intervalo deve ser um número inteiro maior ou igual a 2.',
-    'Campos de nome e classificação são obrigatórios na criação de regra.',
+    'Mínimo de sinais entre 1 e 6.',
+    'Janela de datas entre 1 e 60 dias.',
+    'Palavras-chave obrigatórias para novas regras de e-mail.',
   ],
   integrations: [
-    'Conectores Gmail e Outlook via ConnectorButton injetado e skipConnectors',
-    'PocketBase collections email_agent_configs e email_agent_rules',
+    'Coleções cargo_agent_configs, email_agent_configs, email_agent_rules e audit_logs.',
+    'Conectores Gmail e Outlook via API Skip Connectors.',
   ],
   flowsAndDependencies: [
-    'Regras aprovadas aqui alimentam o hook email_agent.pb.js que gera os registros vistos na Central de Agentes.',
+    'Alterações nestes parâmetros afetam imediatamente o próximo ciclo do Agente de Cargas e do Agente de E-mails.',
   ],
   dataSourceAndDestination: {
-    origin: 'Entrada do administrador na interface web e conectores Gmail/Outlook.',
-    destination: 'Coleções email_agent_configs e email_agent_rules no PocketBase.',
+    origin: 'Entrada manual de administradores e gestores.',
+    destination: 'Coleções cargo_agent_configs e email_agent_rules.',
     persistence: 'Banco SQLite via PocketBase v0.36.',
   },
   permissions: [
+    { role: 'Administrador', access: 'Total: pode alterar critérios, aprovar e rejeitar regras.' },
     {
-      role: 'Administrador',
-      access: 'Acesso total: gerenciar parâmetros, criar, editar e excluir regras.',
+      role: 'Gestor Operacional',
+      access: 'Pode sugerir regras e alterar configurações operacionais.',
     },
-    {
-      role: 'Outros perfis',
-      access: 'Bloqueado por padrão no RBAC (restrito a gestores/administradores).',
-    },
+    { role: 'Demais perfis', access: 'Somente leitura ou sem acesso às ações administrativas.' },
   ],
   notificationsAndErrors: [
-    'Validação visual de campos obrigatórios e notificações toast de confirmação.',
+    'Feedback imediato com toast após persistência.',
+    'Mensagens claras caso haja erro de rede ou validação.',
   ],
 }
 
 export const EmailAgentTrainingPage: React.FC = () => {
-  const { toast } = useToast()
   const { user } = useAuth()
-  const [config, setConfig] = useState<EmailAgentConfig | null>(null)
+  const { toast } = useToast()
+  const isAdmin = user?.role === 'admin'
+
+  // Estado Agente de E-mails
+  const [emailConfig, setEmailConfig] = useState<EmailAgentConfig | null>(null)
   const [rules, setRules] = useState<EmailAgentRule[]>([])
+  const [cronInterval, setCronInterval] = useState(15)
+  const [emailAgentActive, setEmailAgentActive] = useState(true)
+
+  // Estado Agente de Cargas (Prioridade 2)
+  const [cargoConfig, setCargoConfig] = useState<CargoAgentConfig | null>(null)
+  const [cargoActive, setCargoActive] = useState(true)
+  const [minSignals, setMinSignals] = useState(2)
+  const [matchPlate, setMatchPlate] = useState(true)
+  const [matchClientDoc, setMatchClientDoc] = useState(true)
+  const [matchDatesDays, setMatchDatesDays] = useState(7)
+  const [matchDriver, setMatchDriver] = useState(true)
+  const [matchCargoWeight, setMatchCargoWeight] = useState(true)
+  const [checkDuplicates, setCheckDuplicates] = useState(true)
+  const [autoLinkConfident, setAutoLinkConfident] = useState(true)
+  const [savingCargoConfig, setSavingCargoConfig] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [savingConfig, setSavingConfig] = useState(false)
-  const [logicModalOpen, setLogicModalOpen] = useState(false)
-
-  // Config Form
-  const [intervalMinutes, setIntervalMinutes] = useState(15)
-  const [agentActive, setAgentActive] = useState(true)
-
-  // Modal Regra
   const [ruleModalOpen, setRuleModalOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<EmailAgentRule | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
+
+  // Formulário Regra de E-mail
   const [ruleName, setRuleName] = useState('')
-  const [ruleDesc, setRuleDesc] = useState('')
   const [triggerType, setTriggerType] = useState<EmailTriggerType>('nfe_received')
-  const [actionType, setActionType] = useState<EmailActionType>('start_process')
-  const [subjectKeywords, setSubjectKeywords] = useState('')
   const [senderPattern, setSenderPattern] = useState('')
-  const [fileExtensions, setFileExtensions] = useState('')
-  const [targetProcess, setTargetProcess] = useState('')
-  const [priority, setPriority] = useState(1)
-  const [ruleActive, setRuleActive] = useState(true)
-  const [savingRule, setSavingRule] = useState(false)
+  const [subjectKeywords, setSubjectKeywords] = useState('')
+  const [actionType, setActionType] = useState<EmailActionType>('identify_cargo')
+  const [priorityOrder, setPriorityOrder] = useState(10)
+  const [ruleNotes, setRuleNotes] = useState('')
 
   const loadData = async () => {
     setLoading(true)
     try {
-      const [cfg, rList] = await Promise.all([getEmailAgentConfig(), getEmailAgentRules()])
-      if (cfg) {
-        setConfig(cfg)
-        setIntervalMinutes(cfg.check_interval_minutes || 15)
-        setAgentActive(cfg.is_active)
+      const [eCfg, rulesData, cCfg] = await Promise.all([
+        getEmailAgentConfig(),
+        getEmailAgentRules(),
+        getCargoAgentConfig(),
+      ])
+
+      if (eCfg) {
+        setEmailConfig(eCfg)
+        setEmailAgentActive(eCfg.is_active)
+        setCronInterval(eCfg.check_interval_minutes || 15)
       }
-      setRules(rList)
+      setRules(rulesData)
+
+      if (cCfg) {
+        setCargoConfig(cCfg)
+        setCargoActive(cCfg.is_active)
+        setMinSignals(cCfg.min_matching_signals || 2)
+        setMatchPlate(cCfg.match_plate)
+        setMatchClientDoc(cCfg.match_client_document)
+        setMatchDatesDays(cCfg.match_dates_window_days || 7)
+        setMatchDriver(cCfg.match_driver)
+        setMatchCargoWeight(cCfg.match_cargo_weight)
+        setCheckDuplicates(cCfg.check_fiscal_duplicates)
+        setAutoLinkConfident(cCfg.auto_link_when_confident)
+      }
     } catch (err) {
-      console.error('Erro ao carregar dados de treinamento:', err)
+      console.error('Erro ao carregar configurações de treinamento:', err)
       toast({
         title: 'Erro ao carregar dados',
-        description: 'Não foi possível carregar as configurações do agente.',
+        description: 'Não foi possível carregar as configurações dos agentes.',
         variant: 'destructive',
       })
     } finally {
@@ -182,35 +223,24 @@ export const EmailAgentTrainingPage: React.FC = () => {
     loadData()
   }, [])
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (intervalMinutes < 2) {
-      toast({
-        title: 'Intervalo inválido',
-        description: 'O intervalo mínimo de verificação permitido é de 2 minutos.',
-        variant: 'destructive',
-      })
-      return
-    }
-
+  // Salvar Configuração do Agente de E-mails
+  const handleSaveEmailConfig = async () => {
+    if (!emailConfig) return
     setSavingConfig(true)
     try {
-      if (config) {
-        const updated = await updateEmailAgentConfig(config.id, {
-          check_interval_minutes: intervalMinutes,
-          is_active: agentActive,
-          status: agentActive ? 'active' : 'paused',
-        })
-        setConfig(updated)
-        toast({
-          title: 'Configurações salvas!',
-          description: `Intervalo definido para ${intervalMinutes} minutos. Status: ${agentActive ? 'Ativo' : 'Pausado'}.`,
-        })
-      }
+      await updateEmailAgentConfig(emailConfig.id, {
+        is_active: emailAgentActive,
+        check_interval_minutes: cronInterval,
+      })
+      toast({
+        title: 'Configurações de E-mail salvas',
+        description: `Intervalo de verificação definido para ${cronInterval} minutos.`,
+      })
+      await loadData()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       toast({
-        title: 'Erro ao salvar configurações',
+        title: 'Erro ao salvar configurações de e-mail',
         description: msg,
         variant: 'destructive',
       })
@@ -219,83 +249,109 @@ export const EmailAgentTrainingPage: React.FC = () => {
     }
   }
 
-  const handleOpenRuleModal = (rule?: EmailAgentRule) => {
-    if (rule) {
-      setEditingRule(rule)
-      setRuleName(rule.name)
-      setRuleDesc(rule.description || '')
-      setTriggerType(rule.trigger_type)
-      setActionType(rule.action_type)
-      setSubjectKeywords(rule.subject_keywords || '')
-      setSenderPattern(rule.sender_pattern || '')
-      setFileExtensions(rule.file_extensions || '')
-      setTargetProcess(rule.action_target_process || '')
-      setPriority(rule.order_priority || 1)
-      setRuleActive(rule.is_active)
-    } else {
-      setEditingRule(null)
-      setRuleName('')
-      setRuleDesc('')
-      setTriggerType('nfe_received')
-      setActionType('start_process')
-      setSubjectKeywords('')
-      setSenderPattern('')
-      setFileExtensions('xml,pdf,zip')
-      setTargetProcess('Triagem de NF-e')
-      setPriority(rules.length + 1)
-      setRuleActive(true)
+  // Salvar Configuração do Agente de Cargas (Prioridade 2)
+  const handleSaveCargoConfig = async () => {
+    if (!cargoConfig) return
+    setSavingCargoConfig(true)
+    try {
+      await updateCargoAgentConfig(cargoConfig.id, {
+        is_active: cargoActive,
+        min_matching_signals: Number(minSignals),
+        match_plate: matchPlate,
+        match_client_document: matchClientDoc,
+        match_dates_window_days: Number(matchDatesDays),
+        match_driver: matchDriver,
+        match_cargo_weight: matchCargoWeight,
+        check_fiscal_duplicates: checkDuplicates,
+        auto_link_when_confident: autoLinkConfident,
+      })
+      toast({
+        title: 'Critérios de Cargas atualizados!',
+        description: `Exigindo no mínimo ${minSignals} sinais coincidentes para auto-vínculo seguro.`,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao salvar critérios de carga',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingCargoConfig(false)
     }
+  }
+
+  // Abrir modal de criação de regra
+  const handleOpenCreateRule = () => {
+    setEditingRule(null)
+    setRuleName('')
+    setTriggerType('nfe_received')
+    setSenderPattern('')
+    setSubjectKeywords('nfe, danfe, xml, nota fiscal')
+    setActionType('identify_cargo')
+    setPriorityOrder(10)
+    setRuleNotes('')
     setRuleModalOpen(true)
   }
 
+  // Abrir modal de edição
+  const handleOpenEditRule = (rule: EmailAgentRule) => {
+    setEditingRule(rule)
+    setRuleName(rule.name)
+    setTriggerType(rule.trigger_type)
+    setSenderPattern(rule.sender_pattern || '')
+    setSubjectKeywords(rule.subject_keywords || '')
+    setActionType(rule.action_type)
+    setPriorityOrder(rule.order_priority)
+    setRuleNotes(rule.description || '')
+    setRuleModalOpen(true)
+  }
+
+  // Salvar Regra de E-mail
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!ruleName.trim()) {
+    if (!ruleName.trim() || !subjectKeywords.trim()) {
       toast({
-        title: 'Nome obrigatório',
-        description: 'Informe um nome descritivo para a regra.',
+        title: 'Campos obrigatórios',
+        description: 'Informe o nome da regra e as palavras-chave do assunto.',
         variant: 'destructive',
       })
       return
     }
 
-    setSavingRule(true)
     try {
-      const adminIdentity = user ? `${user.name || user.email} (${user.email})` : 'Administrador'
       if (editingRule) {
         await updateEmailAgentRule(editingRule.id, {
           name: ruleName.trim(),
-          description: ruleDesc.trim(),
           trigger_type: triggerType,
-          action_type: actionType,
-          subject_keywords: subjectKeywords.trim(),
           sender_pattern: senderPattern.trim(),
-          file_extensions: fileExtensions.trim(),
-          action_target_process: targetProcess.trim(),
-          order_priority: priority,
-          is_active: ruleActive,
-          approval_status: 'approved',
-          approved_by: adminIdentity,
-          approved_at: new Date().toISOString(),
+          subject_keywords: subjectKeywords.trim(),
+          action_type: actionType,
+          order_priority: Number(priorityOrder),
+          description: ruleNotes.trim(),
         })
         toast({ title: 'Regra atualizada com sucesso!' })
       } else {
         await createEmailAgentRule({
           name: ruleName.trim(),
-          description: ruleDesc.trim(),
           trigger_type: triggerType,
-          action_type: actionType,
-          subject_keywords: subjectKeywords.trim(),
           sender_pattern: senderPattern.trim(),
-          file_extensions: fileExtensions.trim(),
-          action_target_process: targetProcess.trim(),
-          order_priority: priority,
-          is_active: ruleActive,
-          approval_status: 'approved',
-          approved_by: adminIdentity,
-          approved_at: new Date().toISOString(),
+          subject_keywords: subjectKeywords.trim(),
+          action_type: actionType,
+          order_priority: Number(priorityOrder),
+          approval_status: isAdmin ? 'approved' : 'pending_approval',
+          approved_by: isAdmin ? user?.name || user?.email : undefined,
+          approved_at: isAdmin ? new Date().toISOString() : undefined,
+          is_active: true,
+          description: ruleNotes.trim(),
         })
-        toast({ title: 'Regra criada e aprovada!' })
+        toast({
+          title: 'Regra cadastrada com sucesso!',
+          description: isAdmin
+            ? 'Regra aprovada e ativa imediatamente.'
+            : 'Regra submetida para aprovação do Administrador.',
+        })
       }
       setRuleModalOpen(false)
       await loadData()
@@ -306,59 +362,66 @@ export const EmailAgentTrainingPage: React.FC = () => {
         description: msg,
         variant: 'destructive',
       })
-    } finally {
-      setSavingRule(false)
     }
   }
 
-  const handleToggleRuleStatus = async (rule: EmailAgentRule) => {
+  // Aprovar regra
+  const handleApproveRule = async (ruleId: string) => {
     try {
-      await updateEmailAgentRule(rule.id, {
-        is_active: !rule.is_active,
-      })
-      toast({
-        title: !rule.is_active ? 'Regra ativada!' : 'Regra pausada!',
-      })
+      const adminName = user?.name || user?.email || 'Administrador'
+      await approveEmailAgentRule(ruleId, adminName)
+      toast({ title: 'Regra aprovada com sucesso!' })
       await loadData()
-    } catch {
-      toast({
-        title: 'Erro ao alternar status da regra',
-        variant: 'destructive',
-      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao aprovar', description: msg, variant: 'destructive' })
     }
   }
 
-  const handleDeleteRule = async (rule: EmailAgentRule) => {
-    if (!window.confirm(`Deseja realmente excluir a regra "${rule.name}"?`)) return
+  // Rejeitar regra
+  const handleRejectRule = async (ruleId: string) => {
     try {
-      await deleteEmailAgentRule(rule.id)
-      toast({ title: 'Regra excluída com sucesso!' })
+      const adminName = user?.name || user?.email || 'Administrador'
+      await rejectEmailAgentRule(ruleId, adminName)
+      toast({ title: 'Regra rejeitada!' })
       await loadData()
-    } catch {
-      toast({ title: 'Erro ao excluir regra', variant: 'destructive' })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao rejeitar', description: msg, variant: 'destructive' })
+    }
+  }
+
+  // Excluir regra
+  const handleDeleteRule = async (ruleId: string) => {
+    if (!window.confirm('Deseja realmente excluir esta regra?')) return
+    try {
+      await deleteEmailAgentRule(ruleId)
+      toast({ title: 'Regra excluída!' })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao excluir', description: msg, variant: 'destructive' })
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho da Tela de Treinamento */}
+      {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-400/30 text-[10px] uppercase">
-              Área Administrativa
+              Governança & Parâmetros dos Agentes
             </Badge>
-            <span className="text-xs text-slate-300">
-              Conexões Seguras • Intervalo Programado • Regras Autorizadas
-            </span>
+            <span className="text-xs text-slate-300">Prioridades 1 & 2 Ativas</span>
           </div>
           <h1 className="text-xl md:text-2xl font-extrabold mt-1 tracking-tight flex items-center gap-2">
             <Sliders className="h-6 w-6 text-indigo-400" />
-            Treinamento do Agente de E-mails
+            Treinamento & Regras dos Agentes Autônomos
           </h1>
           <p className="text-xs md:text-sm text-slate-300 max-w-2xl mt-0.5">
-            Gerenciamento de regras de classificação e triagem. O agente atua com estrita obediência
-            às regras cadastradas e aprovadas aqui.
+            Parametrize com rigor a triagem de e-mails e os critérios de cruzamento de cargas para
+            manter segurança operacional absoluta.
           </p>
         </div>
 
@@ -375,304 +438,371 @@ export const EmailAgentTrainingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* AVISO MANDATÓRIO DE SEGURANÇA */}
-      <div className="p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 text-indigo-950 shadow-2xs flex items-start gap-3">
-        <ShieldCheck className="h-6 w-6 text-indigo-700 shrink-0 mt-0.5" />
-        <div className="text-xs space-y-1">
-          <div className="font-extrabold text-sm uppercase tracking-wide text-indigo-900 flex items-center gap-1.5">
-            <span>Regra de Ouro de Segurança do Agente:</span>
-          </div>
-          <p className="leading-relaxed font-medium text-indigo-900">
-            O Agente de E-mails{' '}
-            <strong>NUNCA executa instruções externas recebidas por e-mail</strong>. Qualquer
-            solicitação, comando de texto ou instrução contida no corpo do e-mail é tratada apenas
-            como texto bruto para triagem contra as regras previamente aprovadas pelo Administrador
-            nesta tela.
-          </p>
-        </div>
-      </div>
-
-      {/* BLOCO DE PARÂMETROS OPERACIONAIS E CONECTORES DE CAIXA POSTAL */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Parâmetros do Agente */}
-        <Card className="lg:col-span-6 border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Clock className="h-4 w-4 text-indigo-600" />
-              Parâmetros de Execução do Agente
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Defina o intervalo em minutos para o ciclo automático no backend
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <form onSubmit={handleSaveConfig} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="interval" className="text-xs font-semibold text-slate-700">
-                  Intervalo de Verificação (em minutos — mínimo 2 min)
-                </Label>
-                <div className="flex items-center gap-3">
-                  <Input
-                    id="interval"
-                    type="number"
-                    min={2}
-                    max={1440}
-                    value={intervalMinutes}
-                    onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                    className="w-32 text-sm font-semibold"
-                    required
-                  />
-                  <span className="text-xs text-slate-500">
-                    O cron do servidor verifica caixas a cada {intervalMinutes} minutos.
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <Label className="text-xs font-semibold text-slate-700 block">
-                  Status Operacional do Agente
-                </Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={agentActive ? 'default' : 'outline'}
-                    onClick={() => setAgentActive(true)}
-                    className="text-xs font-semibold"
-                  >
-                    Ativo (Monitorando)
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={!agentActive ? 'destructive' : 'outline'}
-                    onClick={() => setAgentActive(false)}
-                    className="text-xs font-semibold"
-                  >
-                    Pausado (Inativo)
-                  </Button>
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-end">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={savingConfig}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
-                >
-                  {savingConfig ? 'Salvando...' : 'Salvar Parâmetros'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Conectores Gmail e Outlook do Próprio Usuário */}
-        <Card className="lg:col-span-6 border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-indigo-600" />
-              Conexão da Caixa de E-mails do Usuário
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Conecte sua própria conta via consentimento seguro (sem armazenar senhas)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 space-y-4">
-            <p className="text-xs text-slate-600 leading-relaxed">
-              O sistema utiliza conectores oficiais autorizados. Cada usuário conecta a sua própria
-              caixa de correio profissional (Gmail ou Outlook/Office 365). Nenhuma senha é gravada
-              no banco de dados.
-            </p>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div>
-                  <span className="font-bold text-xs text-slate-800 block">
-                    Google Workspace / Gmail
-                  </span>
-                  <span className="text-[11px] text-slate-500">Caixa de entrada corporativa</span>
-                </div>
-                <ConnectorButton toolkit="gmail" name="Gmail" className="shrink-0" />
-              </div>
-
-              <div className="border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div>
-                  <span className="font-bold text-xs text-slate-800 block">
-                    Microsoft Outlook / 365
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Caixa de correio Exchange/Office
-                  </span>
-                </div>
-                <ConnectorButton toolkit="outlook" name="Outlook" className="shrink-0" />
-              </div>
-            </div>
-
-            <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Conectores ativos no modo seguro por usuário autenticado.</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* GESTÃO DE REGRAS TREINÁVEIS */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="pb-3 border-b border-slate-200/80">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* SEÇÃO NOVA: CRITÉRIOS DE CRUZAMENTO DO AGENTE DE IDENTIFICAÇÃO DE CARGAS (PRIORIDADE 2) */}
+      <Card className="border-indigo-200/80 shadow-sm bg-gradient-to-b from-indigo-50/20 to-transparent">
+        <CardHeader className="border-b border-indigo-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>Regras de Classificação e Triagem Aprovadas</span>
-                <Badge variant="outline" className="text-xs">
-                  {rules.length} regras
+              <div className="flex items-center gap-2">
+                <Badge className="bg-indigo-600 text-white text-[10px] font-bold">
+                  Prioridade 2 • Agente de Cargas
                 </Badge>
+                <Badge variant="outline" className="text-indigo-800 border-indigo-300 text-[10px]">
+                  Regra Crítica: Cruzamento Multi-Sinal
+                </Badge>
+              </div>
+              <CardTitle className="text-base font-bold text-slate-900 mt-1 flex items-center gap-2">
+                <FileCheck2 className="h-5 w-5 text-indigo-600" />
+                <span>Critérios de Cruzamento & Limiares de Auto-Vínculo</span>
               </CardTitle>
-              <CardDescription className="text-xs">
-                Regras vigentes que o agente utiliza para classificar e-mails e anexos
+              <CardDescription className="text-xs text-slate-600">
+                A identificação não depende exclusivamente da placa: combine placa, cliente,
+                documentos, datas, condutor e peso.
               </CardDescription>
             </div>
 
             <Button
               size="sm"
-              onClick={() => handleOpenRuleModal()}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 h-8"
+              onClick={handleSaveCargoConfig}
+              disabled={savingCargoConfig || !isAdmin}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 self-start sm:self-auto"
             >
-              <Plus className="h-4 w-4" />
-              Nova Regra
+              <Save className="h-4 w-4" />
+              {savingCargoConfig ? 'Salvando...' : 'Salvar Critérios de Carga'}
             </Button>
           </div>
         </CardHeader>
+        <CardContent className="p-5 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Mínimo de sinais coincidentes */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Hash className="h-4 w-4 text-indigo-600" />
+                Mínimo de Sinais Coincidentes
+              </label>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Quantidade mínima de evidências fiscais coincidentes para que o sistema considere a
+                viagem compatível.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={minSignals}
+                  onChange={(e) => setMinSignals(Math.max(1, Math.min(6, Number(e.target.value))))}
+                  className="w-20 text-center font-bold text-sm h-8"
+                  disabled={!isAdmin}
+                />
+                <span className="text-xs text-slate-600 font-medium">
+                  sinais simultâneos (padrão: 2)
+                </span>
+              </div>
+            </div>
 
+            {/* Janela de Datas de Viagem */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-indigo-600" />
+                Janela de Tolerância de Datas
+              </label>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Intervalo de dias aceito entre a data de emissão da NF-e e a programação da viagem.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={matchDatesDays}
+                  onChange={(e) =>
+                    setMatchDatesDays(Math.max(1, Math.min(60, Number(e.target.value))))
+                  }
+                  className="w-20 text-center font-bold text-sm h-8"
+                  disabled={!isAdmin}
+                />
+                <span className="text-xs text-slate-600 font-medium">dias de tolerância</span>
+              </div>
+            </div>
+
+            {/* Proteção contra Duplicidade Fiscal */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-purple-600" />
+                  Prevenir Duplicidade Fiscal
+                </label>
+                <Switch
+                  checked={checkDuplicates}
+                  onCheckedChange={setCheckDuplicates}
+                  disabled={!isAdmin}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Bloqueia associação se a chave da NF-e já possuir CT-e emitido ou autorizado no
+                sistema.
+              </p>
+              <div className="text-[10px] text-purple-800 font-semibold bg-purple-50 px-2 py-1 rounded">
+                Prevenção de Bitributação Ativa
+              </div>
+            </div>
+          </div>
+
+          {/* Sinais Habilitados no Cruzamento */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+            <span className="text-xs font-bold text-slate-800 block">
+              Sinais Habilitados para Cruzamento Inteligente:
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50/50">
+                <div className="text-xs">
+                  <div className="font-semibold text-slate-800">Placa do Veículo</div>
+                  <div className="text-[10px] text-slate-500">Tag &lt;veicTransp&gt; do XML</div>
+                </div>
+                <Switch checked={matchPlate} onCheckedChange={setMatchPlate} disabled={!isAdmin} />
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50/50">
+                <div className="text-xs">
+                  <div className="font-semibold text-slate-800">Motorista / Condutor</div>
+                  <div className="text-[10px] text-slate-500">Nome ou CPF informado</div>
+                </div>
+                <Switch
+                  checked={matchDriver}
+                  onCheckedChange={setMatchDriver}
+                  disabled={!isAdmin}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50/50">
+                <div className="text-xs">
+                  <div className="font-semibold text-slate-800">Cliente / Remetente</div>
+                  <div className="text-[10px] text-slate-500">CNPJ & Razão Social</div>
+                </div>
+                <Switch
+                  checked={matchClientDoc}
+                  onCheckedChange={setMatchClientDoc}
+                  disabled={!isAdmin}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50/50">
+                <div className="text-xs">
+                  <div className="font-semibold text-slate-800">Peso da Carga</div>
+                  <div className="text-[10px] text-slate-500">Tolerância de até 25%</div>
+                </div>
+                <Switch
+                  checked={matchCargoWeight}
+                  onCheckedChange={setMatchCargoWeight}
+                  disabled={!isAdmin}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Regra de Ambiguidade Informativa */}
+          <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/60 text-xs text-amber-900 flex items-start gap-2.5">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong className="block font-bold text-amber-950">
+                Regra de Segurança contra Associações Incorretas:
+              </strong>
+              <span>
+                Sempre que houver divergência de dados ou mais de uma viagem compatível para o mesmo
+                documento, o agente <strong>nunca auto-vinculará</strong>. Ele criará
+                automaticamente uma pendência e notificará o responsável operacional na Central de
+                Agentes para revisão humana.
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* CONECTORES DE E-MAIL (GMAIL E OUTLOOK DO PRÓPRIO USUÁRIO) */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200/80">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Mail className="h-5 w-5 text-indigo-600" />
+            <span>Conectores de E-mail Autorizados</span>
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Cada usuário conecta sua própria caixa postal autorizada para coleta segura de NF-es e
+            pedidos de transporte.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-slate-900">Google Workspace / Gmail</span>
+                  <Badge variant="outline" className="text-[10px]">
+                    OAuth 2.0 Pessoal
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Coleta de e-mails recebidos com anexos XML de NF-e e PDFs operacionais.
+                </p>
+              </div>
+              <ConnectorButton toolkit="gmail" name="Google Gmail" className="w-full text-xs" />
+            </div>
+
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-slate-900">Microsoft 365 / Outlook</span>
+                  <Badge variant="outline" className="text-[10px]">
+                    OAuth 2.0 Pessoal
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Integração corporativa com caixas Exchange Online e pastas operacionais.
+                </p>
+              </div>
+              <ConnectorButton
+                toolkit="outlook"
+                name="Microsoft Outlook"
+                className="w-full text-xs"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* REGRAS DE E-MAIL APROVADAS */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Zap className="h-5 w-5 text-indigo-600" />
+                <span>Regras de Triagem de E-mails ({rules.length})</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Classificação determinística através de palavras-chave e padrões de remetente
+                aprovados
+              </CardDescription>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleOpenCreateRule}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              Nova Regra de E-mail
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Ordem</th>
-                  <th className="p-3">Nome da Regra & Descrição</th>
-                  <th className="p-3">Tipo de Gatilho</th>
-                  <th className="p-3">Critérios (Palavras / Extensões)</th>
-                  <th className="p-3">Ação Executada</th>
-                  <th className="p-3">Status</th>
+                  <th className="p-3">Prioridade / Nome</th>
+                  <th className="p-3">Gatilho</th>
+                  <th className="p-3">Palavras-chave</th>
+                  <th className="p-3">Ação Proposta</th>
+                  <th className="p-3">Governança</th>
                   <th className="p-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rules.map((rule) => (
                   <tr key={rule.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 font-mono font-bold text-slate-700">
-                      {rule.order_priority}
-                    </td>
-
-                    <td className="p-3 max-w-sm">
+                    <td className="p-3 whitespace-nowrap">
                       <div className="font-bold text-slate-900">{rule.name}</div>
-                      {rule.description && (
-                        <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
-                          {rule.description}
-                        </div>
-                      )}
-                      <div className="text-[10px] text-indigo-600 mt-0.5">
-                        Acessos correspondidos: {rule.match_count || 0}
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        Prioridade #{rule.order_priority} • Disparos: {rule.match_count || 0}
                       </div>
                     </td>
 
                     <td className="p-3 whitespace-nowrap">
-                      {rule.trigger_type === 'nfe_received' && (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]">
-                          NF-e Recebida
-                        </Badge>
-                      )}
-                      {rule.trigger_type === 'cte_request' && (
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">
-                          Solicitação CT-e
-                        </Badge>
-                      )}
-                      {rule.trigger_type === 'complementary_doc' && (
-                        <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-[10px]">
-                          Doc. Complementar
-                        </Badge>
-                      )}
-                      {rule.trigger_type === 'unknown' && (
-                        <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">
-                          Solicitação Desconhecida
-                        </Badge>
-                      )}
+                      <Badge variant="outline" className="text-[10px]">
+                        {rule.trigger_type}
+                      </Badge>
                     </td>
 
                     <td className="p-3 max-w-xs">
-                      {rule.subject_keywords && (
-                        <div className="text-[11px] text-slate-700">
-                          <strong>Assunto:</strong> {rule.subject_keywords}
-                        </div>
-                      )}
-                      {rule.file_extensions && (
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          <strong>Anexos:</strong> {rule.file_extensions}
-                        </div>
-                      )}
-                      {rule.sender_pattern && (
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          <strong>Remetente:</strong> {rule.sender_pattern}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="p-3 whitespace-nowrap">
-                      <div className="font-semibold text-slate-800">
-                        {rule.action_type === 'start_process' && 'Iniciar Processo'}
-                        {rule.action_type === 'identify_cargo' && 'Identificar Carga'}
-                        {rule.action_type === 'link_operation' && 'Vincular à Operação'}
-                        {rule.action_type === 'send_for_analysis' && 'Encaminhar p/ Análise'}
+                      <div className="text-slate-700 font-mono text-[11px] truncate">
+                        {rule.subject_keywords}
                       </div>
-                      {rule.action_target_process && (
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {rule.action_target_process}
+                      {rule.sender_pattern && (
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          Remetente: {rule.sender_pattern}
                         </div>
                       )}
                     </td>
 
                     <td className="p-3 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleRuleStatus(rule)}
-                        className="cursor-pointer"
-                        title="Clique para alternar o status"
-                      >
-                        {rule.is_active ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
-                            Ativa
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-slate-100 text-slate-600 border-slate-300 text-[10px]">
-                            Inativa
-                          </Badge>
-                        )}
-                      </button>
+                      <div className="font-medium text-slate-800">{rule.action_type}</div>
+                      {rule.action_target_process && (
+                        <div className="text-[10px] text-indigo-700 font-mono mt-0.5">
+                          Alvo: {rule.action_target_process}
+                        </div>
+                      )}
                     </td>
 
-                    <td className="p-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="p-3 whitespace-nowrap">
+                      {rule.approval_status === 'approved' ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          Aprovada
+                        </Badge>
+                      ) : rule.approval_status === 'pending_approval' ? (
+                        <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] gap-1 font-semibold">
+                          <Clock className="h-3 w-3 text-amber-600" />
+                          Pendente Aprovação
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] gap-1">
+                          <XCircle className="h-3 w-3 text-rose-600" />
+                          Rejeitada
+                        </Badge>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-right whitespace-nowrap space-x-1">
+                      {isAdmin && rule.approval_status === 'pending_approval' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApproveRule(rule.id)}
+                            className="h-7 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 px-2"
+                          >
+                            Aprovar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRejectRule(rule.id)}
+                            className="h-7 text-xs text-rose-700 border-rose-300 hover:bg-rose-50 px-2"
+                          >
+                            Rejeitar
+                          </Button>
+                        </>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenEditRule(rule)}
+                        className="h-7 w-7 p-0 text-slate-600"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+
+                      {isAdmin && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleOpenRuleModal(rule)}
-                          className="h-7 w-7 p-0 text-slate-600 hover:text-indigo-600"
-                          title="Editar Regra"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteRule(rule)}
-                          className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
-                          title="Excluir Regra"
+                          onClick={() => handleDeleteRule(rule.id)}
+                          className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                      </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -682,137 +812,102 @@ export const EmailAgentTrainingPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* MODAL DE CRIAÇÃO / EDIÇÃO DE REGRA */}
+      {/* MODAL DE CRIAÇÃO / EDIÇÃO DE REGRA DE E-MAIL */}
       <Dialog open={ruleModalOpen} onOpenChange={setRuleModalOpen}>
         <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-900">
-              {editingRule ? 'Editar Regra de Treinamento' : 'Nova Regra de Treinamento'}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
-              Defina os critérios de correspondência e o processo operacional a ser iniciado
-            </DialogDescription>
-          </DialogHeader>
+          <form onSubmit={handleSaveRule} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-slate-900">
+                {editingRule ? 'Editar Regra de E-mail' : 'Nova Regra de Triagem de E-mail'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Regras aprovadas são executadas automaticamente nos ciclos periódicos do agente.
+              </DialogDescription>
+            </DialogHeader>
 
-          <form onSubmit={handleSaveRule} className="space-y-4 pt-2 text-xs">
-            <div className="space-y-1">
-              <Label className="font-semibold text-slate-700">Nome da Regra *</Label>
-              <Input
-                value={ruleName}
-                onChange={(e) => setRuleName(e.target.value)}
-                placeholder="Ex.: Quando receber NF-e → Iniciar triagem de carga"
-                className="text-xs"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="font-semibold text-slate-700">Descrição Explicativa</Label>
-              <Input
-                value={ruleDesc}
-                onChange={(e) => setRuleDesc(e.target.value)}
-                placeholder="Explique a finalidade da regra"
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">
-                  Tipo de Gatilho / Classificação *
-                </Label>
-                <select
-                  value={triggerType}
-                  onChange={(e) => setTriggerType(e.target.value as EmailTriggerType)}
-                  className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs"
-                >
-                  <option value="nfe_received">NF-e Recebida</option>
-                  <option value="cte_request">Solicitação de CT-e</option>
-                  <option value="complementary_doc">Documento Complementar</option>
-                  <option value="unknown">Solicitação Desconhecida / Outros</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">Ação a Executar *</Label>
-                <select
-                  value={actionType}
-                  onChange={(e) => setActionType(e.target.value as EmailActionType)}
-                  className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs"
-                >
-                  <option value="start_process">Iniciar Processo</option>
-                  <option value="identify_cargo">Identificar Carga e Transportadora</option>
-                  <option value="link_operation">Vincular à Operação de Viagem</option>
-                  <option value="send_for_analysis">Encaminhar para Análise Humana</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="font-semibold text-slate-700">
-                Palavras-chave no Assunto (separadas por vírgula)
-              </Label>
-              <Input
-                value={subjectKeywords}
-                onChange={(e) => setSubjectKeywords(e.target.value)}
-                placeholder="Ex.: nfe, nota fiscal, danfe, xml (ou * para qualquer assunto)"
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">
-                  Extensões de Arquivo (separadas por vírgula)
-                </Label>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Nome da Regra *</label>
                 <Input
-                  value={fileExtensions}
-                  onChange={(e) => setFileExtensions(e.target.value)}
-                  placeholder="Ex.: xml,pdf,zip,rar"
+                  value={ruleName}
+                  onChange={(e) => setRuleName(e.target.value)}
+                  placeholder="Ex.: Triagem de NF-e da Metalúrgica Sul"
+                  required
                   className="text-xs"
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">
-                  Padrão de Remetente (opcional)
-                </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Tipo de Gatilho</label>
+                  <select
+                    value={triggerType}
+                    onChange={(e) => setTriggerType(e.target.value as EmailTriggerType)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                  >
+                    <option value="nfe_received">NF-e Recebida (XML)</option>
+                    <option value="cte_request">Solicitação de CT-e</option>
+                    <option value="complementary_doc">Documento Complementar</option>
+                    <option value="unknown">Não Identificado / Exceção</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Ação Automatizada
+                  </label>
+                  <select
+                    value={actionType}
+                    onChange={(e) => setActionType(e.target.value as EmailActionType)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                  >
+                    <option value="identify_cargo">Encaminhar ao Agente de Cargas</option>
+                    <option value="start_process">Iniciar Processamento</option>
+                    <option value="link_operation">Vincular à Operação</option>
+                    <option value="send_for_analysis">Enviar para Análise Manual</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Palavras-chave no Assunto (separadas por vírgula) *
+                </label>
+                <Input
+                  value={subjectKeywords}
+                  onChange={(e) => setSubjectKeywords(e.target.value)}
+                  placeholder="Ex.: nfe, xml, nota fiscal, danfe"
+                  required
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Padrão do Remetente (opcional)
+                </label>
                 <Input
                   value={senderPattern}
                   onChange={(e) => setSenderPattern(e.target.value)}
-                  placeholder="Ex.: @fornecedor.com.br"
+                  placeholder="Ex.: @metalurgica.com.br ou faturamento@"
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Descrição / Justificativa
+                </label>
+                <Input
+                  value={ruleNotes}
+                  onChange={(e) => setRuleNotes(e.target.value)}
+                  placeholder="Ex.: Regra aprovada para automação de faturamento de bobinas"
                   className="text-xs"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">Processo Alvo Vinculado</Label>
-                <Input
-                  value={targetProcess}
-                  onChange={(e) => setTargetProcess(e.target.value)}
-                  placeholder="Ex.: Triagem de NF-e"
-                  className="text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="font-semibold text-slate-700">
-                  Prioridade de Execução (1 = máxima)
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={priority}
-                  onChange={(e) => setPriority(Number(e.target.value))}
-                  className="text-xs"
-                />
-              </div>
-            </div>
-
-            <DialogFooter className="pt-2 border-t">
+            <DialogFooter className="pt-3 border-t flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -825,17 +920,16 @@ export const EmailAgentTrainingPage: React.FC = () => {
               <Button
                 type="submit"
                 size="sm"
-                disabled={savingRule}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
               >
-                {savingRule ? 'Salvando...' : 'Salvar e Aprovar Regra'}
+                Salvar Regra
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Documentação Viva da Tela */}
+      {/* Modal de Lógica da Tela */}
       <ScreenLogicModal
         open={logicModalOpen}
         onClose={() => setLogicModalOpen(false)}

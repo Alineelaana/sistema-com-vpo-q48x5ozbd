@@ -68,6 +68,8 @@ import {
   FileSpreadsheet,
 } from 'lucide-react'
 import { BatchFineImportModal } from '@/components/BatchFineImportModal'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { FINES_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 
 export const INFRACTION_TYPE_LABELS: Record<InfractionType, string> = {
   speeding: 'Excesso de Velocidade',
@@ -168,6 +170,7 @@ export const FinesPage: React.FC = () => {
 
   // Modal de Importação em Lote
   const [batchImportOpen, setBatchImportOpen] = useState(false)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   // Modal de Criação / Edição
   const [modalOpen, setModalOpen] = useState(false)
@@ -542,26 +545,35 @@ export const FinesPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
+            type="button"
             variant="outline"
-            onClick={() => setBatchImportOpen(true)}
-            className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-2 font-medium"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
           >
-            <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-            Importar em lote
+            Lógica da Tela
+          </Button>
+
+          <Button
+            onClick={() => setBatchImportOpen(true)}
+            variant="outline"
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 gap-2 text-xs font-semibold"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Importar em Lote (CSV)
           </Button>
 
           <Button
             onClick={handleOpenCreate}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-xs font-semibold"
           >
             <Plus className="h-4 w-4" />
             Nova Multa
           </Button>
         </div>
       </div>
-
       {/* Cards de Resumo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-amber-200 bg-amber-50/30">
@@ -1339,6 +1351,12 @@ export const FinesPage: React.FC = () => {
         drivers={drivers}
         existingFines={fines}
         onSuccess={loadAll}
+      />
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={FINES_SCREEN_LOGIC_DOC}
       />
     </div>
   )

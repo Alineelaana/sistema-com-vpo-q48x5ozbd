@@ -13,6 +13,8 @@ import {
 import { getDeliveries } from '@/services/logisticsService'
 import type { Delivery, AuditStatus } from '@/types/logistics'
 import { AuditFormModal } from '@/components/AuditFormModal'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { FREIGHT_AUDIT_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   Scale,
   DollarSign,
@@ -39,6 +41,7 @@ export const FreightAuditPage: React.FC = () => {
   // Modal
   const [auditModalOpen, setAuditModalOpen] = useState(false)
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -115,7 +118,17 @@ export const FreightAuditPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -385,6 +398,12 @@ export const FreightAuditPage: React.FC = () => {
         open={auditModalOpen}
         onOpenChange={setAuditModalOpen}
         onSuccess={handleAuditSuccess}
+      />
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={FREIGHT_AUDIT_SCREEN_LOGIC_DOC}
       />
     </div>
   )

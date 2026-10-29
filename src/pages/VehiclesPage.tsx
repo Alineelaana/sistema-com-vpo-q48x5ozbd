@@ -35,6 +35,8 @@ import {
   deleteVehicle,
 } from '@/services/logisticsService'
 import type { Vehicle, VehicleType } from '@/types/logistics'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { VEHICLES_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import { Truck, Plus, Pencil, Trash2, Search, SlidersHorizontal, ShieldCheck } from 'lucide-react'
 
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
@@ -60,6 +62,7 @@ export const VehiclesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -182,13 +185,25 @@ export const VehiclesPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Novo Veículo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Veículo
+          </Button>
+        </div>
       </div>
 
       {/* Barra de pesquisa e filtros */}
@@ -440,6 +455,12 @@ export const VehiclesPage: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={VEHICLES_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

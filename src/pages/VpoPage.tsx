@@ -4,10 +4,29 @@ import { Card, CardContent } from '@/components/ui/card'
 import { AlertCircle, FileCheck, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { VPO_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
+import { useState } from 'react'
+import { FileCode } from 'lucide-react'
 
 export const VpoPage: React.FC = () => {
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setLogicModalOpen(true)}
+          className="text-xs font-semibold gap-1.5"
+        >
+          <FileCode className="h-4 w-4 text-indigo-600" />
+          Lógica da Tela
+        </Button>
+      </div>
+
       <VpoCalculator />
 
       {/* Orientações legais e integração com CT-e */}
@@ -35,6 +54,12 @@ export const VpoPage: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={VPO_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

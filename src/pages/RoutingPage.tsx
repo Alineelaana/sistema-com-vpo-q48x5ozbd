@@ -43,10 +43,13 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { ROUTING_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 
 export const RoutingPage: React.FC = () => {
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
@@ -252,7 +255,17 @@ export const RoutingPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -578,6 +591,12 @@ export const RoutingPage: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={ROUTING_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

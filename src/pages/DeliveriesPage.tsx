@@ -21,6 +21,8 @@ import type { Delivery, Vehicle, Driver, Trip, DeliveryStatus } from '@/types/lo
 import { DeliveryFormModal } from '@/components/DeliveryFormModal'
 import { PodModal } from '@/components/PodModal'
 import { PodViewModal } from '@/components/PodViewModal'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { DELIVERIES_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   Package,
   Plus,
@@ -62,6 +64,7 @@ export const DeliveriesPage: React.FC = () => {
   const [podModalOpen, setPodModalOpen] = useState(false)
   const [podViewOpen, setPodViewOpen] = useState(false)
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -223,6 +226,16 @@ export const DeliveriesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Link to="/routing">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs font-semibold">
               <Navigation className="h-4 w-4 text-indigo-600" />
@@ -523,6 +536,12 @@ export const DeliveriesPage: React.FC = () => {
       />
 
       <PodViewModal open={podViewOpen} onOpenChange={setPodViewOpen} delivery={selectedDelivery} />
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={DELIVERIES_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

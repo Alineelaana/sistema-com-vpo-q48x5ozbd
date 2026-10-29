@@ -39,6 +39,8 @@ import {
   getCompanySettings,
 } from '@/services/logisticsService'
 import type { Trip, Vehicle, Driver } from '@/types/logistics'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { TRIPS_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   MapPin,
   Plus,
@@ -74,6 +76,7 @@ export const TripsPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [showVpoHelper, setShowVpoHelper] = useState(false)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   // Emissão de CT-e direto da viagem
   const [cteModalOpen, setCteModalOpen] = useState(false)
@@ -307,11 +310,21 @@ export const TripsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Button
             variant="outline"
             onClick={() => setShowVpoHelper(!showVpoHelper)}
-            className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs font-semibold"
           >
             <Calculator className="h-4 w-4" />
             {showVpoHelper ? 'Ocultar Calculadora' : 'Abrir Calculadora VPO'}
@@ -319,7 +332,7 @@ export const TripsPage: React.FC = () => {
 
           <Button
             onClick={handleOpenCreate}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-xs font-semibold"
           >
             <Plus className="h-4 w-4" />
             Nova Viagem
@@ -904,6 +917,12 @@ export const TripsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={TRIPS_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

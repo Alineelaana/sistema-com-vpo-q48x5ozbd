@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { getCompanySettings, saveCompanySettings } from '@/services/logisticsService'
 import type { CompanySettings } from '@/types/logistics'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { COMPANY_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   Building2,
   ShieldCheck,
@@ -44,6 +46,7 @@ export const CompanyPage: React.FC = () => {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
   const [company, setCompany] = useState<Partial<CompanySettings>>({
     corporate_name: '',
     trade_name: '',
@@ -144,6 +147,16 @@ export const CompanyPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           {company.certificate_status === 'configured' ? (
             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 gap-1 px-3 py-1">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -436,6 +449,12 @@ export const CompanyPage: React.FC = () => {
           </Button>
         </div>
       </form>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={COMPANY_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

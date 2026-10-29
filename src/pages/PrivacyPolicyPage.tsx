@@ -17,12 +17,15 @@ import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { CURRENT_PRIVACY_POLICY_VERSION, PRIVACY_POLICY_LAST_UPDATE } from '@/types/userManagement'
 import { acceptPrivacyPolicy } from '@/services/userManagementService'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { PRIVACY_POLICY_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 
 export const PrivacyPolicyPage: React.FC = () => {
   const { currentUser, user } = useAuth()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [hasConsented, setHasConsented] = useState(!!currentUser?.privacy_consent_date)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const handleAccept = async () => {
     if (!currentUser?.id) return
@@ -68,32 +71,44 @@ export const PrivacyPolicyPage: React.FC = () => {
         </div>
 
         {/* Status de aceite do titular conectado */}
-        <div className="p-3 rounded-lg border bg-white shadow-sm flex items-center gap-3 shrink-0">
-          {hasConsented ? (
-            <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>
-                Termo Aceito em:{' '}
-                <strong>
-                  {currentUser?.privacy_consent_date
-                    ? new Date(currentUser.privacy_consent_date).toLocaleDateString('pt-BR')
-                    : 'Hoje'}
-                </strong>
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-amber-700 font-medium">Aceite pendente</span>
-              <Button
-                size="sm"
-                onClick={handleAccept}
-                disabled={loading}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-7"
-              >
-                {loading ? 'Gravando...' : 'Aceitar Termos Vigentes'}
-              </Button>
-            </div>
-          )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
+          <div className="p-3 rounded-lg border bg-white shadow-sm flex items-center gap-3 shrink-0">
+            {hasConsented ? (
+              <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span>
+                  Termo Aceito em:{' '}
+                  <strong>
+                    {currentUser?.privacy_consent_date
+                      ? new Date(currentUser.privacy_consent_date).toLocaleDateString('pt-BR')
+                      : 'Hoje'}
+                  </strong>
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-amber-700 font-medium">Aceite pendente</span>
+                <Button
+                  size="sm"
+                  onClick={handleAccept}
+                  disabled={loading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-7"
+                >
+                  {loading ? 'Gravando...' : 'Aceitar Termos Vigentes'}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -341,6 +356,12 @@ export const PrivacyPolicyPage: React.FC = () => {
           </Button>
         </div>
       )}
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={PRIVACY_POLICY_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

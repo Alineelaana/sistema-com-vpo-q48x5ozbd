@@ -30,6 +30,8 @@ import {
   createCteDocument,
 } from '@/services/logisticsService'
 import type { CteDocument, Trip } from '@/types/logistics'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { CTE_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   FileText,
   Plus,
@@ -68,6 +70,7 @@ export const CtePage: React.FC = () => {
 
   // Emissão manual de CT-e
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
   const [manualForm, setManualForm] = useState({
     cte_number: 1043,
     series: 1,
@@ -204,13 +207,25 @@ export const CtePage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Emitir CT-e Manual
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Emitir CT-e Manual
+          </Button>
+        </div>
       </div>
 
       {/* Filtros e Busca */}
@@ -682,6 +697,12 @@ export const CtePage: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={CTE_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

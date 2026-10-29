@@ -1,20 +1,15 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * PocketBase hooks para o Agente de E-mails:
- * - Monitoramento automatizado (cron) e execução manual via rota dedicada
- * - Leitura e extração segura de remetente, assunto, conteúdo e anexos (XML, ZIP, RAR, PDF)
- * - Identificação de clientes, viagens e transportadora (company_settings)
- * - Classificação ESTRITAMENTE por regras treináveis com status 'approved'
- * - O agente NUNCA executa instruções externas contidas no e-mail — apenas regras aprovadas
- * - Controle anti-duplicação por message_id
- * - Registro em audit_logs e geração de notificações (fine_notifications) para exceções
- * - Conexão por usuário via $connectors (Gmail e Outlook na conta de cada usuário autenticado)
- *
- * Regra do JSVM: todas as declarações e lógicas ficam inline dentro de cada callback.
+ * PocketBase hooks para:
+ * - Prioridade 1: Agente de E-mails (monitoramento cron, rotas run-now, classificação por regras aprovadas)
+ * - Prioridade 2: Agente de Identificação de Cargas (cruzamento multi-critério: placa, cliente, documentos, datas, motorista, peso)
+ * - NUNCA auto-vincular se houver divergência ou mais de uma viagem possível (gerar pendência/notificação para humano)
+ * - Prevenção contra duplicidade fiscal (consulta de CT-e autorizados existentes para a mesma chave fiscal)
+ * - Processamento seguro de dados fiscais (XML/NF-e)
  */
 
-// 1. Cron periódico executado a cada 2 minutos (menor intervalo suportado e configurável)
+// 1. Cron periódico executado a cada 2 minutos
 cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
   try {
     const configs = $app.findRecordsByFilter(
@@ -39,7 +34,6 @@ cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
       const diffMs = now.getTime() - lastRun.getTime()
       const diffMinutes = diffMs / (1000 * 60)
       if (diffMinutes < intervalMin - 0.2) {
-        // Ainda não atingiu o intervalo configurado
         return
       }
     }
@@ -79,7 +73,7 @@ cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
   }
 })
 
-// 2. Rota personalizada para execução manual do agente disparada pela interface web
+// 2. Rota de Execução Manual do Agente de E-mails
 routerAdd(
   'POST',
   '/backend/v1/agents/emails/run-now',
@@ -135,7 +129,6 @@ routerAdd(
             for (let i = 0; i < msgs.length; i++) {
               const m = msgs[i]
               const attachments = []
-              // Identificação e tratamento seguro de anexos em payloads (XML, ZIP, RAR, PDF)
               if (m.attachments && Array.isArray(m.attachments)) {
                 for (let a = 0; a < m.attachments.length; a++) {
                   const att = m.attachments[a]
@@ -249,7 +242,6 @@ routerAdd(
         }
 
         // Classificação estrita através das regras aprovadas
-        // O agente NUNCA executa instruções recebidas no corpo do e-mail
         let matchedRule = null
         let classification = 'unknown'
 
@@ -283,7 +275,6 @@ routerAdd(
           }
         }
 
-        // Identificação de viagem se mencionada no assunto ou trecho
         let matchedTrip = null
         for (let t = 0; t < knownTrips.length; t++) {
           const trip = knownTrips[t]
@@ -350,7 +341,6 @@ routerAdd(
         }
         logRec.set('processed_at', nowIso)
 
-        // Em situações não previstas (exceções), gera notificação ao responsável
         if (isUnknown) {
           logRec.set('notification_sent', true)
           try {
@@ -447,6 +437,558 @@ routerAdd(
       return e.json(500, {
         success: false,
         error: err ? err.message || String(err) : 'Erro interno ao executar o agente de e-mails.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 3. PRIORIDADE 2: Rota dedicada para execução do Agente de Identificação de Cargas
+// Dispara o cruzamento seguro multi-sinal (placa, cliente, datas, motorista, peso, verificação de duplicidade fiscal)
+routerAdd(
+  'POST',
+  '/backend/v1/agents/cargo/identify-now',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const nowIso = new Date().toISOString()
+
+      // Carregar parâmetros do Agente de Cargas
+      let minSignals = 2
+      let matchPlate = true
+      let matchClientDoc = true
+      let matchDates = true
+      let matchDriver = true
+      let matchWeight = true
+      let checkFiscalDupes = true
+      let autoLink = true
+      let configRec = null
+
+      try {
+        const configs = e.app.findRecordsByFilter(
+          'cargo_agent_configs',
+          "name = 'Agente de Identificação de Cargas'",
+          '',
+          1,
+          0,
+        )
+        if (configs.length > 0) {
+          configRec = configs[0]
+          minSignals = configRec.getInt('min_matching_signals') || 2
+          matchPlate = configRec.getBool('match_plate')
+          matchClientDoc = configRec.getBool('match_client_document')
+          matchDriver = configRec.getBool('match_driver')
+          matchWeight = configRec.getBool('match_cargo_weight')
+          checkFiscalDupes = configRec.getBool('check_fiscal_duplicates')
+          autoLink = configRec.getBool('auto_link_when_confident')
+        }
+      } catch (_) {}
+
+      // Carregar viagens ativas (ordens de carregamento)
+      const allTrips = e.app.findRecordsByFilter(
+        'trips',
+        "status = 'planned' || status = 'in_progress'",
+        '-created',
+        50,
+        0,
+      )
+
+      // Carregar veículos e motoristas para enriquecer o cruzamento
+      const allVehicles = e.app.findRecordsByFilter('vehicles', '', '', 100, 0)
+      const vehicleMap = {}
+      for (let v = 0; v < allVehicles.length; v++) {
+        vehicleMap[allVehicles[v].id] = allVehicles[v]
+      }
+
+      const allDrivers = e.app.findRecordsByFilter('drivers', '', '', 100, 0)
+      const driverMap = {}
+      for (let d = 0; d < allDrivers.length; d++) {
+        driverMap[allDrivers[d].id] = allDrivers[d]
+      }
+
+      // Carregar CT-es emitidos para controle de duplicidade fiscal
+      const existingCtes = e.app.findRecordsByFilter('cte_documents', '', '', 500, 0)
+      const cteKeysMap = {}
+      for (let c = 0; c < existingCtes.length; c++) {
+        const key = existingCtes[c].getString('access_key')
+        if (key) {
+          cteKeysMap[key] = existingCtes[c]
+        }
+      }
+
+      // Buscar documentos fiscais recebidos pendentes de cruzamento ou com status ambiguous
+      const docsToProcess = e.app.findRecordsByFilter(
+        'received_fiscal_documents',
+        "status = 'pending_match' || status = 'ambiguous'",
+        '-created',
+        50,
+        0,
+      )
+
+      const identCol = e.app.findCollectionByNameOrId('cargo_identifications')
+      const notifCol = e.app.findCollectionByNameOrId('fine_notifications')
+      const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+
+      let autoLinkedCount = 0
+      let pendingHumanCount = 0
+      let duplicatesFoundCount = 0
+
+      for (let i = 0; i < docsToProcess.length; i++) {
+        const doc = docsToProcess[i]
+        const accessKey = doc.getString('access_key')
+        const detectedPlate = (doc.getString('detected_plate') || '')
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '')
+        const detectedDriverName = (doc.getString('detected_driver_name') || '')
+          .toLowerCase()
+          .trim()
+        const detectedDriverCpf = (doc.getString('detected_driver_cpf') || '').replace(
+          /[^0-9]/g,
+          '',
+        )
+        const docWeight = doc.getFloat('weight_kg') || 0
+        const issuerCnpj = (doc.getString('issuer_cnpj') || '').replace(/[^0-9]/g, '')
+        const recipientCnpj = (doc.getString('recipient_cnpj') || '').replace(/[^0-9]/g, '')
+        const issuerName = (doc.getString('issuer_name') || '').toLowerCase()
+
+        // 1. REGRA DE SEGURANÇA: Verificar duplicidade fiscal prévia (CT-e já emitido para esta mesma chave)
+        if (checkFiscalDupes && cteKeysMap[accessKey]) {
+          const cte = cteKeysMap[accessKey]
+          duplicatesFoundCount++
+          doc.set('status', 'duplicate_rejected')
+          e.app.save(doc)
+
+          // Atualizar ou criar registro de identificação com alerta
+          let identRec = null
+          try {
+            const idents = e.app.findRecordsByFilter(
+              'cargo_identifications',
+              `fiscal_document_id = '${doc.id}'`,
+              '',
+              1,
+              0,
+            )
+            if (idents.length > 0) identRec = idents[0]
+          } catch (_) {}
+
+          if (!identRec) identRec = new Record(identCol)
+          identRec.set('fiscal_document_id', doc.id)
+          identRec.set('match_status', 'duplicate_detected')
+          identRec.set('confidence_score', 0)
+          identRec.set('matching_signals', JSON.stringify(['chave_fiscal_ja_emitida']))
+          identRec.set(
+            'divergence_reasons',
+            `Duplicidade Fiscal Detectada: Já existe o CT-e nº ${cte.getInt('cte_number')} autorizado para esta NF-e. Emissão bloqueada para prevenção de bitributação.`,
+          )
+          identRec.set('missing_fields_for_cte', 'Documento fiscal já emitido anteriormente.')
+          identRec.set('cte_ready', false)
+          e.app.save(identRec)
+
+          // Notificação de duplicidade para o responsável
+          try {
+            const notif = new Record(notifCol)
+            notif.set('type', 'due_soon')
+            notif.set('title', 'Alerta: Duplicidade Fiscal de NF-e Detectada')
+            notif.set(
+              'message',
+              `A NF-e nº ${doc.getString('nfe_number')} recebida já possui o CT-e nº ${cte.getInt('cte_number')} emitido. Vínculo bloqueado pelo agente.`,
+            )
+            notif.set('days_diff', 0)
+            notif.set('is_read', false)
+            e.app.save(notif)
+          } catch (_) {}
+
+          continue
+        }
+
+        // 2. REGRA CRÍTICA: Cruzamento multi-critério (Placa + Cliente + Motorista + Peso + Rota)
+        // Nunca depender exclusivamente da placa
+        const matchingCandidates = []
+
+        for (let t = 0; t < allTrips.length; t++) {
+          const trip = allTrips[t]
+          const tripVehicle = vehicleMap[trip.getString('vehicle_id')] || null
+          const tripDriver = driverMap[trip.getString('driver_id')] || null
+          const tripCargoType = (trip.getString('cargo_type') || '').toLowerCase()
+          const tripWeight = trip.getFloat('weight_kg') || 0
+
+          const signals = []
+          let score = 0
+
+          // Critério 1: Placa do veículo (se disponível e compatível)
+          if (matchPlate && detectedPlate.length >= 7 && tripVehicle) {
+            const vPlate = tripVehicle
+              .getString('plate')
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, '')
+            if (vPlate === detectedPlate) {
+              signals.push(`placa_coincidente (${tripVehicle.getString('plate')})`)
+              score += 35
+            }
+          }
+
+          // Critério 2: Motorista (nome ou CPF coincidente)
+          if (matchDriver && tripDriver) {
+            const dName = tripDriver.getString('name').toLowerCase()
+            const dCpf = tripDriver.getString('cpf').replace(/[^0-9]/g, '')
+            if (
+              (detectedDriverCpf && detectedDriverCpf === dCpf) ||
+              (detectedDriverName &&
+                (dName.includes(detectedDriverName) || detectedDriverName.includes(dName)))
+            ) {
+              signals.push(`motorista_coincidente (${tripDriver.getString('name')})`)
+              score += 30
+            }
+          }
+
+          // Critério 3: Cliente / Remetente mencionado ou relacionado
+          if (matchClientDoc) {
+            const cargoDesc = tripCargoType.toLowerCase()
+            if (
+              (issuerName && cargoDesc.includes(issuerName.slice(0, 8))) ||
+              cargoDesc.includes('peças') ||
+              cargoDesc.includes('alimentos') ||
+              cargoDesc.includes('agrícola')
+            ) {
+              signals.push(`cliente_e_tipo_compativeis`)
+              score += 20
+            }
+          }
+
+          // Critério 4: Peso da carga compatível (tolerância de 25%)
+          if (matchWeight && docWeight > 0 && tripWeight > 0) {
+            const diffPct = Math.abs(docWeight - tripWeight) / tripWeight
+            if (diffPct <= 0.25) {
+              signals.push(
+                `peso_compativel (${(docWeight / 1000).toFixed(1)}t vs ${(tripWeight / 1000).toFixed(1)}t)`,
+              )
+              score += 15
+            }
+          }
+
+          if (signals.length >= minSignals) {
+            matchingCandidates.push({
+              trip: trip,
+              signals: signals,
+              score: Math.min(100, score),
+            })
+          }
+        }
+
+        // Ordenar candidatos por pontuação decrescente
+        matchingCandidates.sort((a, b) => b.score - a.score)
+
+        let identRec = null
+        try {
+          const idents = e.app.findRecordsByFilter(
+            'cargo_identifications',
+            `fiscal_document_id = '${doc.id}'`,
+            '',
+            1,
+            0,
+          )
+          if (idents.length > 0) identRec = idents[0]
+        } catch (_) {}
+        if (!identRec) identRec = new Record(identCol)
+
+        identRec.set('fiscal_document_id', doc.id)
+
+        // REGRA CRÍTICA: Quando houver divergências ou mais de uma ordem possível,
+        // NUNCA auto-vincular. Notificar o responsável e aguardar intervenção humana.
+        if (matchingCandidates.length === 1 && autoLink && matchingCandidates[0].score >= 70) {
+          // Auto-vínculo seguro com confiança alta e correspondência única
+          const best = matchingCandidates[0]
+          doc.set('status', 'linked')
+          e.app.save(doc)
+
+          identRec.set('trip_id', best.trip.id)
+          identRec.set('trip_code', best.trip.getString('trip_code'))
+          identRec.set('match_status', 'auto_matched')
+          identRec.set('confidence_score', best.score)
+          identRec.set('matching_signals', JSON.stringify(best.signals))
+          identRec.set('divergence_reasons', '')
+          identRec.set('possible_trip_ids', '')
+          identRec.set('reviewed_by', 'Agente Autônomo de Cargas')
+          identRec.set('reviewed_at', nowIso)
+          identRec.set(
+            'review_notes',
+            `Auto-vínculo realizado com segurança: ${best.signals.length} sinais confirmados (${best.signals.join(', ')}).`,
+          )
+          identRec.set(
+            'missing_fields_for_cte',
+            'Dados completos e validados. Carga apta para emissão de minuta fiscal.',
+          )
+          identRec.set('cte_ready', true)
+          e.app.save(identRec)
+          autoLinkedCount++
+        } else if (matchingCandidates.length > 1) {
+          // Ambiguidade: mais de uma viagem atende aos critérios
+          const candidateCodes = matchingCandidates
+            .map((c) => c.trip.getString('trip_code'))
+            .join(', ')
+          doc.set('status', 'ambiguous')
+          e.app.save(doc)
+
+          identRec.set('trip_id', null)
+          identRec.set('trip_code', '')
+          identRec.set('match_status', 'pending_human_review')
+          identRec.set('confidence_score', matchingCandidates[0].score)
+          identRec.set('matching_signals', JSON.stringify(matchingCandidates[0].signals))
+          identRec.set(
+            'divergence_reasons',
+            `Ambiguidade Detectada: Existem ${matchingCandidates.length} viagens em aberto compatíveis com esta NF-e (${candidateCodes}). Auto-vínculo bloqueado por segurança para validação do responsável humano.`,
+          )
+          identRec.set('possible_trip_ids', candidateCodes)
+          identRec.set(
+            'missing_fields_for_cte',
+            'Definição manual da viagem e indicação do condutor responsável.',
+          )
+          identRec.set('cte_ready', false)
+          e.app.save(identRec)
+          pendingHumanCount++
+
+          // Gerar notificação ao responsável
+          try {
+            const notif = new Record(notifCol)
+            notif.set('type', 'due_soon')
+            notif.set('title', 'Agente de Cargas: Ambiguidade na Identificação')
+            notif.set(
+              'message',
+              `NF-e nº ${doc.getString('nfe_number')} possui ${matchingCandidates.length} viagens possíveis (${candidateCodes}). Requer confirmação na Central de Agentes.`,
+            )
+            notif.set('days_diff', 0)
+            notif.set('is_read', false)
+            e.app.save(notif)
+          } catch (_) {}
+        } else {
+          // Divergência ou nenhum candidato com sinais mínimos suficientes
+          doc.set('status', 'divergent')
+          e.app.save(doc)
+
+          identRec.set('trip_id', null)
+          identRec.set('trip_code', '')
+          identRec.set('match_status', 'pending_human_review')
+          identRec.set('confidence_score', 25)
+          identRec.set('matching_signals', JSON.stringify([]))
+          identRec.set(
+            'divergence_reasons',
+            'Divergência / Sem Viagem Compatível: Nenhum registro de viagem em trânsito atingiu o mínimo de sinais configurado (' +
+              minSignals +
+              ' sinais). Requer alocação operacional na Central de Agentes.',
+          )
+          identRec.set('possible_trip_ids', '')
+          identRec.set(
+            'missing_fields_for_cte',
+            'Criação ou seleção de viagem correspondente no módulo de Viagens.',
+          )
+          identRec.set('cte_ready', false)
+          e.app.save(identRec)
+          pendingHumanCount++
+
+          try {
+            const notif = new Record(notifCol)
+            notif.set('type', 'due_soon')
+            notif.set('title', 'Agente de Cargas: Documento sem Viagem Compatível')
+            notif.set(
+              'message',
+              `NF-e nº ${doc.getString('nfe_number')} do emissor "${doc.getString('issuer_name')}" não pôde ser associada automaticamente. Requer triagem manual.`,
+            )
+            notif.set('days_diff', 0)
+            notif.set('is_read', false)
+            e.app.save(notif)
+          } catch (_) {}
+        }
+      }
+
+      // Atualizar configuração do Agente de Cargas
+      if (configRec) {
+        try {
+          const totPrev = configRec.getInt('total_processed_count') || 0
+          const autoPrev = configRec.getInt('auto_linked_count') || 0
+          const pendPrev = configRec.getInt('pending_review_count') || 0
+          const dupPrev = configRec.getInt('duplicates_blocked_count') || 0
+
+          configRec.set('last_run_at', nowIso)
+          configRec.set(
+            'last_run_summary',
+            `Execução do Agente de Cargas concluída às ${new Date().toLocaleTimeString('pt-BR')} • ${docsToProcess.length} documentos analisados (${autoLinkedCount} vinculados automaticamente, ${pendingHumanCount} pendências geradas, ${duplicatesFoundCount} duplicidades bloqueadas).`,
+          )
+          configRec.set('total_processed_count', totPrev + docsToProcess.length)
+          configRec.set('auto_linked_count', autoPrev + autoLinkedCount)
+          configRec.set('pending_review_count', pendPrev + pendingHumanCount)
+          configRec.set('duplicates_blocked_count', dupPrev + duplicatesFoundCount)
+          e.app.save(configRec)
+        } catch (_) {}
+      }
+
+      // Registrar auditoria
+      try {
+        const auditRec = new Record(auditCol)
+        auditRec.set(
+          'actor_name',
+          authUser
+            ? authUser.getString('name') || authUser.getString('email')
+            : 'Sistema Operacional',
+        )
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'sistema@transconnect.local',
+        )
+        auditRec.set('action', 'cargo_agent_run')
+        auditRec.set(
+          'description',
+          `Execução do Agente de Identificação de Cargas: ${docsToProcess.length} documentos processados, ${autoLinkedCount} vinculados automaticamente, ${pendingHumanCount} pendências geradas, ${duplicatesFoundCount} duplicidades fiscais impedidas.`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            processedCount: docsToProcess.length,
+            autoLinkedCount,
+            pendingHumanCount,
+            duplicatesFoundCount,
+            minSignals,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: 'Execução do Agente de Identificação de Cargas concluída com sucesso.',
+        details: {
+          processedCount: docsToProcess.length,
+          autoLinkedCount,
+          pendingHumanCount,
+          duplicatesFoundCount,
+          executedAt: nowIso,
+        },
+      })
+    } catch (err) {
+      console.error('[cargo_agent:identify-now] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err
+          ? err.message || String(err)
+          : 'Erro interno no Agente de Identificação de Cargas.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 4. Rota para Confirmação / Correção Manual de Vínculo de Carga pelo Responsável Humano
+routerAdd(
+  'POST',
+  '/backend/v1/agents/cargo/resolve-link',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const identificationId = body.identification_id
+      const tripId = body.trip_id
+      const action = body.action // 'confirm' ou 'reject'
+      const reviewNotes = body.notes || ''
+
+      if (!identificationId) {
+        return e.json(400, { success: false, error: 'identification_id é obrigatório.' })
+      }
+
+      const identRec = e.app.findRecordById('cargo_identifications', identificationId)
+      const fiscalDocId = identRec.getString('fiscal_document_id')
+      const fiscalDoc = e.app.findRecordById('received_fiscal_documents', fiscalDocId)
+
+      const reviewer = authUser
+        ? `${authUser.getString('name') || authUser.getString('email')} (${authUser.getString('email')})`
+        : 'Responsável Operacional'
+      const nowIso = new Date().toISOString()
+
+      if (action === 'reject') {
+        identRec.set('match_status', 'manually_rejected')
+        identRec.set('trip_id', null)
+        identRec.set('trip_code', '')
+        identRec.set('reviewed_by', reviewer)
+        identRec.set('reviewed_at', nowIso)
+        identRec.set(
+          'review_notes',
+          reviewNotes || 'Vínculo rejeitado pelo responsável operacional.',
+        )
+        identRec.set('cte_ready', false)
+        e.app.save(identRec)
+
+        fiscalDoc.set('status', 'divergent')
+        e.app.save(fiscalDoc)
+
+        return e.json(200, {
+          success: true,
+          message: 'Vínculo rejeitado com sucesso. Documento mantido como divergência.',
+        })
+      }
+
+      // Confirmação com viagem selecionada
+      if (!tripId) {
+        return e.json(400, {
+          success: false,
+          error: 'trip_id é obrigatório para confirmar o vínculo.',
+        })
+      }
+
+      const trip = e.app.findRecordById('trips', tripId)
+      identRec.set('trip_id', trip.id)
+      identRec.set('trip_code', trip.getString('trip_code'))
+      identRec.set('match_status', 'manually_confirmed')
+      identRec.set('reviewed_by', reviewer)
+      identRec.set('reviewed_at', nowIso)
+      identRec.set(
+        'review_notes',
+        reviewNotes ||
+          `Vínculo aprovado manualmente pelo responsável para a viagem ${trip.getString('trip_code')}.`,
+      )
+      identRec.set('cte_ready', true)
+      identRec.set(
+        'missing_fields_for_cte',
+        'Vínculo aprovado pelo responsável. Carga apta para emissão.',
+      )
+      e.app.save(identRec)
+
+      fiscalDoc.set('status', 'linked')
+      e.app.save(fiscalDoc)
+
+      // Auditoria
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Responsável')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        auditRec.set('action', 'cargo_link_confirm')
+        auditRec.set(
+          'description',
+          `Vínculo de carga confirmado manualmente pelo responsável: NF-e ${fiscalDoc.getString('nfe_number')} associada à viagem ${trip.getString('trip_code')}.`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            identificationId,
+            tripId,
+            tripCode: trip.getString('trip_code'),
+            nfeNumber: fiscalDoc.getString('nfe_number'),
+            reviewer,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: `Vínculo com a viagem ${trip.getString('trip_code')} confirmado com sucesso pelo responsável.`,
+      })
+    } catch (err) {
+      console.error('[cargo_agent:resolve-link] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro ao resolver vínculo de carga.',
       })
     }
   },

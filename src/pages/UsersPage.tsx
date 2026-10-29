@@ -53,6 +53,8 @@ import { ExportUserModal } from '@/components/ExportUserModal'
 import pb from '@/lib/pocketbase/client'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { formatCPF } from '@/lib/cpfUtils'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { USERS_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 
 export const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([])
@@ -68,6 +70,7 @@ export const UsersPage: React.FC = () => {
   const [userToAnonymize, setUserToAnonymize] = useState<AppUser | null>(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [userToExport, setUserToExport] = useState<AppUser | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const { toast } = useToast()
 
@@ -233,7 +236,17 @@ export const UsersPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -626,6 +639,12 @@ export const UsersPage: React.FC = () => {
         open={exportModalOpen}
         user={userToExport}
         onClose={() => setExportModalOpen(false)}
+      />
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={USERS_SCREEN_LOGIC_DOC}
       />
     </div>
   )

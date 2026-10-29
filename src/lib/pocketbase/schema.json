@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T01:26:12.144Z",
+  "generatedAt": "2026-10-29T01:37:17.119Z",
   "collections": [
     {
       "name": "users",
@@ -1282,7 +1282,12 @@
             "email_agent_rule_create",
             "email_agent_rule_update",
             "email_agent_rule_approve",
-            "email_agent_rule_reject"
+            "email_agent_rule_reject",
+            "cargo_agent_run",
+            "cargo_agent_config",
+            "cargo_link_confirm",
+            "cargo_link_reject",
+            "cargo_link_manual"
           ]
         },
         {
@@ -1735,6 +1740,422 @@
         "CREATE INDEX idx_email_classif ON email_processing_logs (classification)",
         "CREATE INDEX idx_email_status ON email_processing_logs (process_status)",
         "CREATE INDEX idx_email_received ON email_processing_logs (received_date)"
+      ]
+    },
+    {
+      "name": "cargo_agent_configs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin'",
+        "update": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "min_matching_signals",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "match_plate",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_client_document",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_dates_window_days",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_driver",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_cargo_weight",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "check_fiscal_duplicates",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "auto_link_when_confident",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_run_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_run_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_processed_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "auto_linked_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pending_review_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "duplicates_blocked_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "received_fiscal_documents",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "access_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nfe_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "series",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "issuer_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "issuer_cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient_cnpj",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "weight_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "items_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detected_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detected_driver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detected_driver_cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detected_carrier_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detected_carrier_cnpj",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raw_xml_snippet",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "source_email_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "source_email_subject",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "source_email_sender",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "pending_match",
+            "linked",
+            "ambiguous",
+            "divergent",
+            "duplicate_rejected",
+            "manual_review"
+          ]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_received_fiscal_key ON received_fiscal_documents (access_key)",
+        "CREATE INDEX idx_received_fiscal_nfe ON received_fiscal_documents (nfe_number)",
+        "CREATE INDEX idx_received_fiscal_status ON received_fiscal_documents (status)",
+        "CREATE INDEX idx_received_fiscal_issuer ON received_fiscal_documents (issuer_cnpj)"
+      ]
+    },
+    {
+      "name": "cargo_identifications",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "fiscal_document_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "received_fiscal_documents"
+        },
+        {
+          "name": "trip_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "trips"
+        },
+        {
+          "name": "trip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "auto_matched",
+            "pending_human_review",
+            "manually_confirmed",
+            "manually_rejected",
+            "duplicate_detected"
+          ]
+        },
+        {
+          "name": "confidence_score",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "matching_signals",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "divergence_reasons",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "possible_trip_ids",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reviewed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "review_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "missing_fields_for_cte",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cte_ready",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_cargo_ident_status ON cargo_identifications (match_status)",
+        "CREATE INDEX idx_cargo_ident_trip ON cargo_identifications (trip_id)",
+        "CREATE INDEX idx_cargo_ident_doc ON cargo_identifications (fiscal_document_id)"
       ]
     }
   ]

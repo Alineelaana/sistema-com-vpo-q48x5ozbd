@@ -30,6 +30,8 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { getDrivers, createDriver, updateDriver, deleteDriver } from '@/services/logisticsService'
 import type { Driver } from '@/types/logistics'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { DRIVERS_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import { Users, Plus, Pencil, Trash2, Search, Phone, CreditCard } from 'lucide-react'
 
 export const DriversPage: React.FC = () => {
@@ -44,6 +46,7 @@ export const DriversPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -155,13 +158,25 @@ export const DriversPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Novo Motorista
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Motorista
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -360,6 +375,12 @@ export const DriversPage: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={DRIVERS_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

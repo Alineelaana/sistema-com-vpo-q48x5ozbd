@@ -21,7 +21,11 @@ import type {
   Delivery,
 } from '@/types/logistics'
 import { getEmailAgentConfig, getEmailProcessingLogs } from '@/services/agentService'
+import { getCargoAgentConfig, getCargoIdentifications } from '@/services/cargoAgentService'
 import type { EmailAgentConfig, EmailProcessingLog } from '@/types/agent'
+import type { CargoAgentConfig, CargoIdentification } from '@/types/cargoAgent'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { DASHBOARD_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   Truck,
   TrendingUp,
@@ -59,23 +63,39 @@ export const DashboardPage: React.FC = () => {
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [agentConfig, setAgentConfig] = useState<EmailAgentConfig | null>(null)
   const [recentAgentLogs, setRecentAgentLogs] = useState<EmailProcessingLog[]>([])
+  const [cargoConfig, setCargoConfig] = useState<CargoAgentConfig | null>(null)
+  const [cargoIdentifications, setCargoIdentifications] = useState<CargoIdentification[]>([])
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadDashboard() {
       setLoading(true)
-      const [tripsList, ctesList, vehList, drivList, comp, finesList, delList, cfg, agentLogs] =
-        await Promise.all([
-          getTrips(),
-          getCteDocuments(),
-          getVehicles(),
-          getDrivers(),
-          getCompanySettings(),
-          getTrafficFines(),
-          getDeliveries(),
-          getEmailAgentConfig(),
-          getEmailProcessingLogs(5),
-        ])
+      const [
+        tripsList,
+        ctesList,
+        vehList,
+        drivList,
+        comp,
+        finesList,
+        delList,
+        cfg,
+        agentLogs,
+        cCfg,
+        cIdents,
+      ] = await Promise.all([
+        getTrips(),
+        getCteDocuments(),
+        getVehicles(),
+        getDrivers(),
+        getCompanySettings(),
+        getTrafficFines(),
+        getDeliveries(),
+        getEmailAgentConfig(),
+        getEmailProcessingLogs(5),
+        getCargoAgentConfig(),
+        getCargoIdentifications(50),
+      ])
       setTrips(tripsList)
       setCtes(ctesList)
       setVehicles(vehList)
@@ -85,6 +105,8 @@ export const DashboardPage: React.FC = () => {
       setDeliveries(delList)
       setAgentConfig(cfg)
       setRecentAgentLogs(agentLogs)
+      setCargoConfig(cCfg)
+      setCargoIdentifications(cIdents)
       setLoading(false)
     }
     loadDashboard()
@@ -255,6 +277,14 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
           <Link to="/control-tower">
             <Button size="sm" variant="secondary" className="gap-1.5 text-xs font-semibold">
               <Radio className="h-4 w-4 text-indigo-600 animate-pulse" />
@@ -273,7 +303,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Bloco Resumo do Agente de E-mails com Link para a Central de Agentes */}
+      {/* Bloco Executivo dos Agentes Autônomos (Prioridades 1 e 2) */}
       <Card className="border-indigo-200/80 bg-gradient-to-r from-indigo-50/70 via-white to-slate-50 shadow-sm overflow-hidden">
         <CardHeader className="p-4 pb-2 border-b border-indigo-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -281,23 +311,17 @@ export const DashboardPage: React.FC = () => {
               <Bot className="h-4 w-4" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <CardTitle className="text-sm font-bold text-slate-900">
-                  Agente Autônomo de E-mails
+                  Agentes Autônomos (E-mails & Identificação de Cargas)
                 </CardTitle>
-                <Badge
-                  className={
-                    agentConfig?.is_active
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]'
-                      : 'bg-slate-100 text-slate-700 border-slate-300 text-[10px]'
-                  }
-                >
-                  {agentConfig?.is_active ? 'Ativo • Monitorando' : 'Pausado'}
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                  Prioridades 1 & 2 Ativas
                 </Badge>
               </div>
               <CardDescription className="text-xs text-slate-500">
-                Triagem inteligente de NF-e, CT-e e anexos operacionais • Intervalo:{' '}
-                {agentConfig?.check_interval_minutes || 15} min
+                Fluxo unificado: Coleta de mensagens ➔ Cruzamento seguro com Viagens ➔ Bloqueio de
+                divergências
               </CardDescription>
             </div>
           </div>
@@ -314,54 +338,72 @@ export const DashboardPage: React.FC = () => {
           </Link>
         </CardHeader>
 
-        <CardContent className="p-4 pt-3 space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <CardContent className="p-4 pt-3 space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+            {/* E-mails Processados */}
             <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-semibold text-slate-500 uppercase block">
-                Total Processado
+                E-mails Triados
               </span>
               <span className="text-xl font-bold text-slate-900 mt-0.5 block">
                 {agentConfig?.processed_count_total || recentAgentLogs.length}
               </span>
-              <span className="text-[10px] text-emerald-600 font-medium">E-mails triados</span>
+              <span className="text-[10px] text-emerald-600 font-medium">Etapa 1 ativa</span>
             </div>
 
+            {/* Cargas Vinculadas Automaticamente */}
             <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-semibold text-slate-500 uppercase block">
-                Classificados com Sucesso
+                Cargas Vinculadas
               </span>
               <span className="text-xl font-bold text-emerald-700 mt-0.5 block">
-                {agentConfig?.auto_classified_count || 0}
+                {cargoConfig?.auto_linked_count ||
+                  cargoIdentifications.filter(
+                    (c) =>
+                      c.match_status === 'auto_matched' || c.match_status === 'manually_confirmed',
+                  ).length}
               </span>
-              <span className="text-[10px] text-slate-500 font-medium">Por regras aprovadas</span>
+              <span className="text-[10px] text-slate-500 font-medium">Multi-sinal confirmado</span>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
-                Exceções / Pendências
+            {/* Pendências de Revisão Humana */}
+            <div className="p-2.5 rounded-lg bg-white border border-amber-200 bg-amber-50/40 shadow-2xs">
+              <span className="text-[10px] font-semibold text-amber-900 uppercase block">
+                Pendências de Carga
               </span>
-              <span className="text-xl font-bold text-amber-700 mt-0.5 block">
-                {agentConfig?.exceptions_count || 0}
+              <span className="text-xl font-bold text-amber-800 mt-0.5 block">
+                {cargoConfig?.pending_review_count ||
+                  cargoIdentifications.filter((c) => c.match_status === 'pending_human_review')
+                    .length}
               </span>
-              <span className="text-[10px] text-amber-600 font-medium">Exigem responsável</span>
+              <span className="text-[10px] text-amber-700 font-medium">
+                Ambiguidade / Divergência
+              </span>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+            {/* Duplicidades Fiscais Bloqueadas */}
+            <div className="p-2.5 rounded-lg bg-white border border-purple-200 bg-purple-50/40 shadow-2xs">
+              <span className="text-[10px] font-semibold text-purple-900 uppercase block">
+                Duplicidades Bloqueadas
+              </span>
+              <span className="text-xl font-bold text-purple-800 mt-0.5 block">
+                {cargoConfig?.duplicates_blocked_count ||
+                  cargoIdentifications.filter((c) => c.match_status === 'duplicate_detected')
+                    .length}
+              </span>
+              <span className="text-[10px] text-purple-600 font-medium">Prevenção fiscal</span>
+            </div>
+
+            {/* Critérios de Cruzamento */}
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs col-span-2 sm:col-span-1">
               <span className="text-[10px] font-semibold text-slate-500 uppercase block">
-                Última Execução
+                Sinais Exigidos
               </span>
-              <span className="text-xs font-bold text-slate-800 mt-1 block truncate">
-                {agentConfig?.last_run_at
-                  ? new Date(agentConfig.last_run_at).toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      day: '2-digit',
-                      month: '2-digit',
-                    })
-                  : 'Recente'}
+              <span className="text-sm font-bold text-indigo-700 mt-1 block">
+                Mínimo {cargoConfig?.min_matching_signals || 2} sinais
               </span>
-              <span className="text-[10px] text-slate-500 font-medium truncate block">
-                {agentConfig?.last_run_status || 'Ciclo operacional regular'}
+              <span className="text-[10px] text-slate-500 font-medium block truncate">
+                Placa + Cliente + Datas + Condutor
               </span>
             </div>
           </div>
@@ -370,12 +412,12 @@ export const DashboardPage: React.FC = () => {
           {recentAgentLogs.length > 0 && (
             <div className="pt-2 border-t border-slate-200/70">
               <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>Últimos e-mails triados pelo agente</span>
+                <span>Últimos e-mails recebidos na esteira autônoma</span>
                 <Link
                   to="/agents-center"
                   className="text-indigo-600 hover:underline normal-case font-medium text-[11px]"
                 >
-                  Ver todos os registros ({recentAgentLogs.length})
+                  Ver todos na Central ({recentAgentLogs.length})
                 </Link>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -771,6 +813,13 @@ export const DashboardPage: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* Modal de Lógica da Tela */}
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={DASHBOARD_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

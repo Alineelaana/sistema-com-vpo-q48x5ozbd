@@ -16,6 +16,8 @@ import type { Delivery, DeliveryIncident, DeliveryStatus } from '@/types/logisti
 import { IncidentModal } from '@/components/IncidentModal'
 import { PodModal } from '@/components/PodModal'
 import { PodViewModal } from '@/components/PodViewModal'
+import { ScreenLogicModal } from '@/components/ScreenLogicModal'
+import { CONTROL_TOWER_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
   Radio,
   Clock,
@@ -52,6 +54,7 @@ export const ControlTowerPage: React.FC = () => {
   const [podModalOpen, setPodModalOpen] = useState(false)
   const [podViewOpen, setPodViewOpen] = useState(false)
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null)
+  const [logicModalOpen, setLogicModalOpen] = useState(false)
 
   const loadAll = async () => {
     try {
@@ -202,7 +205,17 @@ export const ControlTowerPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLogicModalOpen(true)}
+            className="text-xs font-semibold gap-1.5"
+          >
+            Lógica da Tela
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -564,6 +577,12 @@ export const ControlTowerPage: React.FC = () => {
       />
 
       <PodViewModal delivery={selectedDelivery} open={podViewOpen} onOpenChange={setPodViewOpen} />
+
+      <ScreenLogicModal
+        open={logicModalOpen}
+        onClose={() => setLogicModalOpen(false)}
+        doc={CONTROL_TOWER_SCREEN_LOGIC_DOC}
+      />
     </div>
   )
 }

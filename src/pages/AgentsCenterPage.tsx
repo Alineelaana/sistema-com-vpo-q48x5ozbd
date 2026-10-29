@@ -4,11 +4,33 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
   getEmailAgentConfig,
   getEmailProcessingLogs,
   triggerEmailAgentRun,
 } from '@/services/agentService'
+import {
+  getCargoAgentConfig,
+  getCargoIdentifications,
+  getReceivedFiscalDocuments,
+  triggerCargoAgentRun,
+  resolveCargoLink,
+} from '@/services/cargoAgentService'
+import { getTrips } from '@/services/logisticsService'
 import type { EmailAgentConfig, EmailProcessingLog } from '@/types/agent'
+import type {
+  CargoAgentConfig,
+  CargoIdentification,
+  ReceivedFiscalDocument,
+} from '@/types/cargoAgent'
+import type { Trip } from '@/types/logistics'
 import { ScreenLogicModal, type ScreenLogicDoc } from '@/components/ScreenLogicModal'
 import {
   Bot,
@@ -20,7 +42,6 @@ import {
   Clock,
   CheckCircle2,
   Search,
-  Filter,
   FileText,
   HelpCircle,
   FileCode,
@@ -28,139 +49,168 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
+  ShieldCheck,
+  Check,
+  X,
+  Truck,
+  Hash,
+  AlertCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
 
 const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Central de Agentes',
-  screenBadge: 'Prioridade 1 • ED Integração',
-  lastUpdate: '2026-10-28',
-  version: '1.0.0',
+  screenBadge: 'Prioridades 1 e 2 • ED Integração',
+  lastUpdate: '2026-10-29',
+  version: '1.1.0',
   objective:
-    'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Nesta fase (Prioridade 1), a etapa 1 (Agente de E-mails) está 100% funcional com conectores Gmail/Outlook, classificação estrita por regras aprovadas e controle anti-duplicação. As etapas seguintes são apresentadas no fluxo com status explícito de "Em Implantação".',
+    'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Com a entrega da Prioridade 2, as Etapas 1 (Agente de E-mails) e 2 (Agente de Identificação de Cargas) estão 100% ativas com dados reais. O agente cruza de forma segura NF-e com viagens, bloqueia auto-vínculo quando há ambiguidade ou divergência e impede duplicidade fiscal. Etapas 3 e 4 permanecem transparentemente em implantação.',
   realFeatures: [
-    'Fluxo visual em 4 etapas detalhando o status real de cada uma (Etapa 1 ativa; Etapas 2, 3 e 4 em implantação)',
-    'Indicadores em tempo real: e-mails processados na última execução, exceções/pendências de triagem, total histórico e status do agente',
-    'Disparo manual ("Executar agora") que aciona o hook do backend, sincroniza caixas conectadas e gera auditoria',
-    'Listagem de e-mails processados com remetente, assunto, classificação, data, anexos seguros e ações executadas',
-    'Filtros por status (Todos, Processados com Sucesso, Exceções/Necessitam Análise, Erros/Duplicados)',
-    'Busca textual rápida por assunto, remetente ou código de viagem',
-    'Detecção segura de anexos (XML de NF-e, ZIP, RAR, PDF) sem execução de código externo',
-    'Controle anti-duplicação por message_id das caixas de correio',
-    'Avisos e notificações de situações não previstas encaminhadas para intervenção humana responsável',
+    'Fluxo visual em 4 etapas detalhando o status real: Etapas 1 e 2 ativas; Etapas 3 e 4 em implantação',
+    'Agente de E-mails com sincronização segura, classificação por regras aprovadas e deduplicação por message_id',
+    'Agente de Identificação de Cargas com cruzamento multi-sinal (placa, cliente, datas, motorista, peso e rota)',
+    'Proteção contra auto-vínculo ambíguo: se houver mais de uma viagem possível ou divergência de dados, gera pendência para intervenção humana',
+    'Verificação e bloqueio de duplicidade fiscal contra CT-es já autorizados no sistema',
+    'Resolução manual de pendências pelo responsável: confirmação da viagem correta ou rejeição justificada com registro em audit_logs',
+    'Indicadores em tempo real para ambas as etapas: e-mails triados, cargas identificadas automaticamente, pendências aguardando humano e duplicidades bloqueadas',
+    'Filtros por status, busca por remetente, NF-e, placa ou viagem',
+    'Visualização de sinais coincidentes confirmados pelo agente e motivos de divergência',
   ],
   fieldsAndButtons: [
     {
-      name: 'Executar agora',
+      name: 'Executar Agente de E-mails',
+      type: 'Botão de Ação Primária',
+      purpose: 'Dispara coleta e classificação de mensagens das caixas conectadas.',
+    },
+    {
+      name: 'Executar Identificação de Cargas',
       type: 'Botão de Ação Primária',
       purpose:
-        'Dispara manualmente o ciclo de coleta e classificação do Agente de E-mails via rota autenticada /backend/v1/agents/emails/run-now, atualizando indicadores e gravando em audit_logs.',
+        'Dispara o cruzamento multi-critério entre NF-es recebidas e ordens de carregamento (viagens) em aberto.',
     },
     {
-      name: 'Atualizar Dados',
-      type: 'Botão Secundário',
-      purpose: 'Recarrega os logs mais recentes de email_processing_logs e a configuração.',
-    },
-    {
-      name: 'Campo de Busca',
-      type: 'Input de Texto',
+      name: 'Confirmar Vínculo / Rejeitar',
+      type: 'Botões de Ação na Linha da Pendência',
       purpose:
-        'Filtra dinamicamente a tabela por remetente, assunto ou código da viagem vinculada.',
+        'Permite ao operador humano escolher a viagem correta em caso de ambiguidade ou rejeitar a associação.',
     },
     {
-      name: 'Filtros de Status',
-      type: 'Botões de Alternância',
-      purpose: 'Segmenta logs entre Todos, Concluídos, Exceções (Pendências) e Duplicados/Erros.',
+      name: 'Alternância entre Etapa 1 e Etapa 2',
+      type: 'Tabs / Abas Operacionais',
+      purpose:
+        'Permite alternar entre o histórico de e-mails recebidos e a gestão de cargas identificadas.',
     },
     {
-      name: 'Configurar Regras e Intervalo',
+      name: 'Regras e Treinamento',
       type: 'Link de Navegação',
-      purpose: 'Abre a tela administrativa de Treinamento do Agente de E-mails.',
+      purpose:
+        'Abre a tela administrativa para configurar regras de e-mail e critérios de identificação de carga.',
     },
   ],
   businessRules: [
-    'O agente NUNCA executa instruções fiscais ou operacionais contidas no corpo do e-mail recebido; opera estritamente com base nas regras treinadas e aprovadas pelo Administrador.',
-    'Cada mensagem possui deduplicação pelo message_id único do provedor de e-mail; e-mails já processados são ignorados sem duplicação.',
-    'Situações não categorizadas ou divergentes são classificadas como "Solicitação Desconhecida / Exceção" e geram notificação para responsável humano.',
-    'Anexos aceitos para extração segura são limitados a XML, ZIP, RAR e PDF para conferência de NF-e, CT-e e documentos complementares.',
-    'As etapas 2 (Carga identificada), 3 (Documentos emitidos) e 4 (Documentos enviados) do fluxo visual são exibidas com status transparente de "Em Implantação", sem simulação indevida.',
+    'Regra Crítica: A identificação NÃO depende exclusivamente da placa do veículo. O agente cruza placa, cliente, documentos, datas, motorista e peso da carga.',
+    'Regra Crítica: Quando houver divergência ou mais de uma viagem possível, o sistema NUNCA auto-vincula. Gera notificação e pendência para validação humana.',
+    'Regra de Duplicidade Fiscal: Se a chave da NF-e já possuir CT-e emitido ou autorizado, a operação é rejeitada para evitar bitributação.',
+    'O agente NUNCA executa instruções fiscais contidas no corpo de e-mails; atua estritamente sob as regras aprovadas pelo Administrador.',
+    'As etapas 3 (Documentos emitidos) e 4 (Documentos enviados) permanecem em implantação, sem simulação indevida de autorização na SEFAZ.',
   ],
   agentsAndAutomations: [
-    'Hook do backend (email_agent.pb.js) executado periodicamente via cronAdd a cada intervalo configurado (mínimo 2 minutos).',
-    'Acesso às caixas de correio dos próprios usuários via $connectors.execute (GMAIL_FETCH_EMAILS e OUTLOOK_LIST_MESSAGES) sem credenciais em texto plano.',
-    'Geração automática de notificações no NotificationCenter para e-mails que caem na fila de exceção.',
-    'Rastreabilidade integral no audit_logs para cada disparo manual ou automático do agente.',
+    'Hook email_agent.pb.js: cron periódica e endpoints /backend/v1/agents/emails/run-now, /agents/cargo/identify-now e /agents/cargo/resolve-link.',
+    'Conectores Gmail e Outlook na conta de cada usuário autenticado.',
+    'Centro de notificações (fine_notifications) acionado automaticamente em casos de divergência ou ambiguidade.',
+    'Rastreabilidade integral em audit_logs para cada identificação e aprovação humana.',
   ],
   validations: [
-    'Validação de message_id único para prevenção de reprocessamento indevido.',
-    'Sanitização de anexos e limitação de visualização de trechos do e-mail (snippet).',
-    'Verificação de autenticação via Bearer token antes de autorizar o disparo manual.',
+    'Verificação do mínimo de sinais coincidentes configurado antes de autorizar auto-vínculo.',
+    'Validação de formato de chave de acesso (44 dígitos) e CNPJs de emitente e destinatário.',
+    'Controle de integridade de relacionamentos entre fiscal_document_id e trips.',
   ],
   integrations: [
-    'Conectores Gmail (GMAIL_FETCH_EMAILS) e Outlook (OUTLOOK_LIST_MESSAGES) na conta do usuário',
-    'PocketBase REST API e rotas sob /backend/v1/agents/emails/run-now',
-    'Central de notificações fine_notifications e registro audit_logs',
+    'Coleções PocketBase: received_fiscal_documents, cargo_identifications, cargo_agent_configs, trips, cte_documents, vehicles e drivers.',
+    'Endpoints backend seguros com autenticação Bearer.',
   ],
   flowsAndDependencies: [
-    'E-mail Recebido (Gmail/Outlook) ➔ Triagem por Regras Aprovadas ➔ Se reconhecido: vincula viagem/NF-e ➔ Se desconhecido: gera Exceção com responsável ➔ Gravação de Log.',
-    'Etapa 2 em diante depende da finalização dos módulos de emissão e despacho na fase seguinte do projeto.',
+    'E-mail Recebido com NF-e ➔ Extração Segura de Dados Fiscais ➔ Agente de Cargas cruza com Viagens ➔ Se ≥2 sinais e único: Auto-vínculo OK ➔ Se ambíguo ou divergente: Fila de Revisão Humana.',
   ],
   dataSourceAndDestination: {
-    origin:
-      'Caixa de e-mail conectada do usuário via conectores Gmail/Outlook e coleção email_agent_rules.',
+    origin: 'Caixas de e-mail conectadas, XMLs anexados e coleção trips.',
     destination:
-      'Coleções PocketBase: email_processing_logs, email_agent_configs, audit_logs e fine_notifications.',
+      'Coleções received_fiscal_documents, cargo_identifications, audit_logs e fine_notifications.',
     persistence: 'Banco SQLite via PocketBase v0.36.',
   },
   permissions: [
     {
       role: 'Administrador',
-      access: 'Acesso total: visualização, disparo manual e acesso à tela de treinamento.',
+      access: 'Acesso total: disparo, aprovação/rejeição e parametrização.',
     },
     {
       role: 'Gestor Operacional',
-      access: 'Acesso à Central de Agentes e monitoramento de exceções.',
+      access: 'Acesso total: visualização, disparo e resolução de pendências.',
     },
-    {
-      role: 'Financeiro',
-      access: 'Acesso à Central de Agentes para conferência de NF-e e CT-e recebidos.',
-    },
-    {
-      role: 'Operador Logístico',
-      access: 'Acesso à Central de Agentes para visualização de documentos vinculados.',
-    },
-    {
-      role: 'Somente Leitura',
-      access: 'Visualização de logs e status da Central de Agentes sem permissão de disparo.',
-    },
+    { role: 'Operador Logístico', access: 'Visualização e confirmação de vínculos operacionais.' },
+    { role: 'Financeiro', access: 'Consulta de documentos fiscais e duplicidades.' },
+    { role: 'Somente Leitura', access: 'Apenas consulta aos indicadores e logs.' },
   ],
   notificationsAndErrors: [
-    'Notificação imediata ao usuário na tela via toast em caso de sucesso ou falha do disparo manual.',
-    'Notificação persistente no centro de alertas para e-mails que caem como pendência/exceção.',
+    'Notificação imediata ao usuário na tela via toast em caso de sucesso ou falha das ações.',
+    'Notificação persistente no NotificationCenter para pendências de ambiguidade ou duplicidade fiscal.',
   ],
   inDevelopmentAlert:
-    'Nesta fase (Prioridade 1 do ED Integração), apenas a Etapa 1 (E-mail recebido e triagem de documentos) está funcional. As etapas "Carga identificada", "Documentos emitidos" e "Documentos enviados" estão demarcadas como "Em Implantação" e entrarão nas próximas fases.',
+    'As Etapas 1 (E-mails) e 2 (Identificação de Cargas) estão 100% ativas nesta versão. As Etapas 3 (Documentos emitidos com CT-e/VPO) e 4 (Documentos enviados) serão entregues na Prioridade 3.',
 }
 
 export const AgentsCenterPage: React.FC = () => {
   const { toast } = useToast()
-  const [config, setConfig] = useState<EmailAgentConfig | null>(null)
-  const [logs, setLogs] = useState<EmailProcessingLog[]>([])
+  const [activeTab, setActiveTab] = useState<'emails' | 'cargo'>('cargo')
+
+  // Estado Agente de E-mails
+  const [emailConfig, setEmailConfig] = useState<EmailAgentConfig | null>(null)
+  const [emailLogs, setEmailLogs] = useState<EmailProcessingLog[]>([])
+
+  // Estado Agente de Cargas (Prioridade 2)
+  const [cargoConfig, setCargoConfig] = useState<CargoAgentConfig | null>(null)
+  const [cargoIdentifications, setCargoIdentifications] = useState<CargoIdentification[]>([])
+  const [fiscalDocs, setFiscalDocs] = useState<ReceivedFiscalDocument[]>([])
+  const [trips, setTrips] = useState<Trip[]>([])
+
   const [loading, setLoading] = useState(true)
-  const [running, setRunning] = useState(false)
+  const [runningEmails, setRunningEmails] = useState(false)
+  const [runningCargo, setRunningCargo] = useState(false)
   const [logicModalOpen, setLogicModalOpen] = useState(false)
+
+  // Filtros
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<
-    'all' | 'processed' | 'needs_analysis' | 'duplicate'
+  const [cargoFilter, setCargoFilter] = useState<
+    'all' | 'pending' | 'auto' | 'confirmed' | 'rejected'
   >('all')
+
+  // Modal de Resolução Manual de Vínculo
+  const [resolveModalOpen, setResolveModalOpen] = useState(false)
+  const [selectedIdentification, setSelectedIdentification] = useState<CargoIdentification | null>(
+    null,
+  )
+  const [selectedTripId, setSelectedTripId] = useState('')
+  const [reviewNotes, setReviewNotes] = useState('')
+  const [resolving, setResolving] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
     try {
-      const [cfg, lgList] = await Promise.all([getEmailAgentConfig(), getEmailProcessingLogs(100)])
-      setConfig(cfg)
-      setLogs(lgList)
+      const [eCfg, eLogs, cCfg, cIdents, fDocs, tripsList] = await Promise.all([
+        getEmailAgentConfig(),
+        getEmailProcessingLogs(100),
+        getCargoAgentConfig(),
+        getCargoIdentifications(100),
+        getReceivedFiscalDocuments(100),
+        getTrips(),
+      ])
+      setEmailConfig(eCfg)
+      setEmailLogs(eLogs)
+      setCargoConfig(cCfg)
+      setCargoIdentifications(cIdents)
+      setFiscalDocs(fDocs)
+      setTrips(tripsList)
     } catch (err) {
       console.error('Erro ao carregar dados da Central de Agentes:', err)
       toast({
@@ -177,107 +227,225 @@ export const AgentsCenterPage: React.FC = () => {
     loadData()
   }, [])
 
-  const handleRunNow = async () => {
-    setRunning(true)
+  // Disparo manual do Agente de E-mails
+  const handleRunEmails = async () => {
+    setRunningEmails(true)
     try {
       const res = await triggerEmailAgentRun()
       toast({
-        title: 'Agente executado com sucesso!',
+        title: 'Agente de E-mails executado!',
         description: res.details
-          ? `${res.details.processedNow} novos e-mails processados (${res.details.exceptionsCount} exceções, ${res.details.duplicateCount} duplicados ignorados).`
+          ? `${res.details.processedNow} novos e-mails processados (${res.details.exceptionsCount} exceções).`
           : res.message,
       })
       await loadData()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       toast({
-        title: 'Falha na execução do agente',
-        description: msg || 'Ocorreu um erro ao acionar o agente.',
+        title: 'Falha na execução do agente de e-mails',
+        description: msg,
         variant: 'destructive',
       })
     } finally {
-      setRunning(false)
+      setRunningEmails(false)
     }
   }
 
-  // Filtragem
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      if (statusFilter !== 'all' && log.process_status !== statusFilter) {
+  // Disparo manual do Agente de Identificação de Cargas
+  const handleRunCargo = async () => {
+    setRunningCargo(true)
+    try {
+      const res = await triggerCargoAgentRun()
+      toast({
+        title: 'Identificação de Cargas concluída!',
+        description: res.details
+          ? `${res.details.autoLinkedCount} vinculadas automaticamente • ${res.details.pendingHumanCount} pendências geradas • ${res.details.duplicatesFoundCount} duplicidades bloqueadas.`
+          : res.message,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Falha na identificação de cargas',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setRunningCargo(false)
+    }
+  }
+
+  // Abrir modal de resolução manual
+  const handleOpenResolveModal = (ident: CargoIdentification) => {
+    setSelectedIdentification(ident)
+    setSelectedTripId(ident.trip_id || '')
+    setReviewNotes(ident.review_notes || '')
+    setResolveModalOpen(true)
+  }
+
+  // Confirmar vínculo manual
+  const handleConfirmLink = async () => {
+    if (!selectedIdentification) return
+    if (!selectedTripId) {
+      toast({
+        title: 'Selecione uma viagem',
+        description: 'Escolha a ordem de carregamento correta para vincular a esta NF-e.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setResolving(true)
+    try {
+      const res = await resolveCargoLink({
+        identification_id: selectedIdentification.id,
+        trip_id: selectedTripId,
+        action: 'confirm',
+        notes: reviewNotes.trim(),
+      })
+      toast({
+        title: 'Vínculo confirmado com sucesso!',
+        description: res.message,
+      })
+      setResolveModalOpen(false)
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao confirmar vínculo',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  // Rejeitar vínculo manual
+  const handleRejectLink = async () => {
+    if (!selectedIdentification) return
+    if (
+      !window.confirm(
+        'Deseja realmente rejeitar a associação desta carga? Ela permanecerá como divergência.',
+      )
+    )
+      return
+
+    setResolving(true)
+    try {
+      const res = await resolveCargoLink({
+        identification_id: selectedIdentification.id,
+        action: 'reject',
+        notes: reviewNotes.trim() || 'Rejeitado pelo operador humano',
+      })
+      toast({
+        title: 'Vínculo rejeitado!',
+        description: res.message,
+      })
+      setResolveModalOpen(false)
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao rejeitar vínculo',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  // Mapa de Documentos Fiscais para fácil lookup
+  const fiscalMap = useMemo(() => {
+    const map = new Map<string, ReceivedFiscalDocument>()
+    for (const d of fiscalDocs) {
+      map.set(d.id, d)
+    }
+    return map
+  }, [fiscalDocs])
+
+  // Filtragem Cargas Identificadas
+  const filteredCargoIdentifications = useMemo(() => {
+    return cargoIdentifications.filter((ident) => {
+      if (cargoFilter === 'pending' && ident.match_status !== 'pending_human_review') return false
+      if (cargoFilter === 'auto' && ident.match_status !== 'auto_matched') return false
+      if (cargoFilter === 'confirmed' && ident.match_status !== 'manually_confirmed') return false
+      if (
+        cargoFilter === 'rejected' &&
+        ident.match_status !== 'manually_rejected' &&
+        ident.match_status !== 'duplicate_detected'
+      )
         return false
-      }
+
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase()
-        const matchSubject = log.subject.toLowerCase().includes(q)
-        const matchSender = log.sender.toLowerCase().includes(q)
-        const matchTrip = (log.trip_code || '').toLowerCase().includes(q)
-        const matchCustomer = (log.customer_identified || '').toLowerCase().includes(q)
-        return matchSubject || matchSender || matchTrip || matchCustomer
+        const doc = ident.expand?.fiscal_document_id || fiscalMap.get(ident.fiscal_document_id)
+        const matchNfe = (doc?.nfe_number || '').toLowerCase().includes(q)
+        const matchIssuer = (doc?.issuer_name || '').toLowerCase().includes(q)
+        const matchPlate = (doc?.detected_plate || '').toLowerCase().includes(q)
+        const matchTrip = (ident.trip_code || '').toLowerCase().includes(q)
+        const matchReasons = (ident.divergence_reasons || '').toLowerCase().includes(q)
+        return matchNfe || matchIssuer || matchPlate || matchTrip || matchReasons
       }
       return true
     })
-  }, [logs, statusFilter, searchTerm])
+  }, [cargoIdentifications, cargoFilter, searchTerm, fiscalMap])
 
-  const exceptionsCount = logs.filter((l) => l.process_status === 'needs_analysis').length
-  const processedSuccessCount = logs.filter((l) => l.process_status === 'processed').length
-  const duplicatesCount = logs.filter(
-    (l) => l.is_duplicate || l.process_status === 'duplicate',
+  // Indicadores do Agente de Cargas
+  const pendingReviewCount = cargoIdentifications.filter(
+    (c) => c.match_status === 'pending_human_review',
+  ).length
+  const autoMatchedCount = cargoIdentifications.filter(
+    (c) => c.match_status === 'auto_matched',
+  ).length
+  const manuallyConfirmedCount = cargoIdentifications.filter(
+    (c) => c.match_status === 'manually_confirmed',
+  ).length
+  const duplicatesCount = cargoIdentifications.filter(
+    (c) => c.match_status === 'duplicate_detected',
   ).length
 
-  const getClassificationBadge = (type: string) => {
-    switch (type) {
-      case 'nfe_received':
-        return (
-          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]">
-            NF-e Recebida
-          </Badge>
-        )
-      case 'cte_request':
-        return (
-          <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">
-            Solicitação CT-e
-          </Badge>
-        )
-      case 'complementary_doc':
-        return (
-          <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-[10px]">
-            Doc. Complementar
-          </Badge>
-        )
-      default:
-        return (
-          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">
-            Não Previsto / Análise
-          </Badge>
-        )
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
+  const getMatchStatusBadge = (status: string) => {
     switch (status) {
-      case 'processed':
+      case 'auto_matched':
         return (
-          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] gap-1">
+          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] gap-1 font-semibold">
             <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-            Processado
+            Auto-Vinculado
           </Badge>
         )
-      case 'needs_analysis':
+      case 'pending_human_review':
         return (
-          <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] gap-1 font-semibold">
-            <AlertTriangle className="h-3 w-3 text-rose-600" />
-            Exceção / Análise
+          <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] gap-1 font-bold animate-pulse">
+            <AlertTriangle className="h-3 w-3 text-amber-600" />
+            Pendente Revisão Humana
           </Badge>
         )
-      case 'duplicate':
+      case 'manually_confirmed':
         return (
-          <Badge className="bg-slate-100 text-slate-700 border-slate-300 text-[10px]">
-            Duplicado
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-[10px] gap-1">
+            <Check className="h-3 w-3 text-blue-600" />
+            Confirmado Manualmente
+          </Badge>
+        )
+      case 'duplicate_detected':
+        return (
+          <Badge className="bg-purple-100 text-purple-900 border-purple-300 text-[10px] gap-1 font-semibold">
+            <ShieldCheck className="h-3 w-3 text-purple-600" />
+            Duplicidade Fiscal Impedida
+          </Badge>
+        )
+      case 'manually_rejected':
+        return (
+          <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] gap-1">
+            <X className="h-3 w-3 text-rose-600" />
+            Rejeitado pelo Operador
           </Badge>
         )
       default:
         return (
-          <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+          <Badge variant="outline" className="text-[10px]">
             {status}
           </Badge>
         )
@@ -286,17 +454,19 @@ export const AgentsCenterPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho da Central com Botão de Ação e Modal de Lógica da Tela */}
+      {/* Cabeçalho da Central com Botões de Ação e Modal de Lógica da Tela */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-400/30 text-[10px] uppercase">
-              Prioridade 1 • ED Integração
+              Prioridade 1 & 2 • ED Integração
             </Badge>
             <span className="text-xs text-slate-300 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              {config?.is_active ? 'Agente Ativo' : 'Agente Pausado'} • Intervalo:{' '}
-              {config?.check_interval_minutes || 15} min
+              Agentes Ativos • Mínimo de Sinais:{' '}
+              <strong className="text-white">
+                {cargoConfig?.min_matching_signals || 2} coincidentes
+              </strong>
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-extrabold mt-1 tracking-tight flex items-center gap-2">
@@ -304,8 +474,8 @@ export const AgentsCenterPage: React.FC = () => {
             Central de Agentes Autônomos
           </h1>
           <p className="text-xs md:text-sm text-slate-300 max-w-2xl mt-0.5">
-            Monitoramento do ciclo de atendimento: recepção de e-mails, extração segura de
-            documentos, regras treináveis aprovadas e controle de exceções com intervenção humana.
+            Triagem automatizada de e-mails e identificação inteligente de cargas cruzando NF-es com
+            viagens, com proteção contra auto-vínculo ambíguo e prevenção de duplicidade fiscal.
           </p>
         </div>
 
@@ -322,26 +492,45 @@ export const AgentsCenterPage: React.FC = () => {
 
           <Button
             size="sm"
-            onClick={handleRunNow}
-            disabled={running}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+            onClick={handleRunCargo}
+            disabled={runningCargo}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 shadow-sm"
           >
-            {running ? (
+            {runningCargo ? (
               <>
                 <RotateCw className="h-4 w-4 animate-spin" />
-                Processando...
+                Cruzando Cargas...
+              </>
+            ) : (
+              <>
+                <FileCheck2 className="h-4 w-4" />
+                Identificar Cargas
+              </>
+            )}
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={handleRunEmails}
+            disabled={runningEmails}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+          >
+            {runningEmails ? (
+              <>
+                <RotateCw className="h-4 w-4 animate-spin" />
+                Lendo E-mails...
               </>
             ) : (
               <>
                 <Play className="h-4 w-4 fill-white" />
-                Executar Agora
+                Coletar E-mails
               </>
             )}
           </Button>
         </div>
       </div>
 
-      {/* FLUXO VISUAL EM 4 ETAPAS */}
+      {/* FLUXO VISUAL EM 4 ETAPAS COM ETAPA 2 100% FUNCIONAL */}
       <Card className="border-slate-200 shadow-sm overflow-hidden">
         <CardHeader className="bg-slate-50/70 border-b border-slate-200/80 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -355,15 +544,22 @@ export const AgentsCenterPage: React.FC = () => {
               </CardDescription>
             </div>
             <div className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-md font-medium">
-              Fase Atual: <strong className="text-indigo-600">Etapa 1 Funcional</strong> • Etapas 2,
-              3 e 4 Em Implantação
+              Fase Atual: <strong className="text-emerald-700">Etapas 1 e 2 100% Funcionais</strong>{' '}
+              • Etapas 3 e 4 Em Implantação
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 relative">
             {/* Etapa 1: E-mail recebido (100% Funcional) */}
-            <div className="p-3.5 rounded-xl border-2 border-emerald-500 bg-emerald-50/40 relative shadow-2xs">
+            <div
+              onClick={() => setActiveTab('emails')}
+              className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                activeTab === 'emails'
+                  ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
+                  : 'border-emerald-500 bg-emerald-50/40 hover:border-emerald-600'
+              }`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white uppercase tracking-wider">
                   Etapa 1 • Ativa
@@ -377,38 +573,43 @@ export const AgentsCenterPage: React.FC = () => {
                 <span>E-mail Recebido</span>
               </div>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Coleta via conectores Gmail/Outlook, extração segura de XML/PDF/ZIP e classificação
-                por regras aprovadas.
+                Coleta via conectores Gmail/Outlook, extração segura de XML/PDF e classificação por
+                regras aprovadas.
               </p>
               <div className="mt-2.5 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-800 font-semibold flex items-center justify-between">
-                <span>{processedSuccessCount} processados</span>
-                <span>{exceptionsCount} exceções</span>
+                <span>{emailLogs.length} mensagens triadas</span>
+                <span className="text-indigo-600 underline">Ver aba</span>
               </div>
             </div>
 
-            {/* Etapa 2: Carga identificada (Em Implantação) */}
-            <div className="p-3.5 rounded-xl border border-slate-300 bg-slate-50/70 relative opacity-90">
+            {/* Etapa 2: Carga identificada (NOVO: 100% Funcional com dados reais) */}
+            <div
+              onClick={() => setActiveTab('cargo')}
+              className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                activeTab === 'cargo'
+                  ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
+                  : 'border-emerald-500 bg-emerald-50/40 hover:border-emerald-600'
+              }`}
+            >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-600 text-white uppercase tracking-wider">
-                  Etapa 2
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white uppercase tracking-wider">
+                  Etapa 2 • Ativa
                 </span>
-                <Badge
-                  variant="outline"
-                  className="border-amber-400 bg-amber-50 text-amber-800 text-[10px]"
-                >
-                  Em Implantação
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                  100% Funcional
                 </Badge>
               </div>
-              <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
-                <FileCheck2 className="h-4 w-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                <FileCheck2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>Carga Identificada</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Cruzamento automático da NF-e com pedidos, remetente, destinatário e veículos em
-                trânsito.
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Cruzamento multi-sinal com viagens cadastradas, prevenção contra duplicidade fiscal
+                e bloqueio de ambiguidades.
               </p>
-              <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
-                Próxima fase do ED Integração
+              <div className="mt-2.5 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-800 font-semibold flex items-center justify-between">
+                <span>{autoMatchedCount + manuallyConfirmedCount} vinculadas</span>
+                <span className="text-amber-800 font-bold">{pendingReviewCount} pendentes</span>
               </div>
             </div>
 
@@ -434,7 +635,7 @@ export const AgentsCenterPage: React.FC = () => {
                 conferência prévia.
               </p>
               <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
-                Sem autorização fiscal simulada
+                Sem autorização fiscal simulada • Prioridade 3
               </div>
             </div>
 
@@ -457,7 +658,7 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 Envio automatizado de DACTE e XML para tomador, motorista e embarcador com
-                confirmação de leitura.
+                confirmação.
               </p>
               <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
                 Próxima fase do ED Integração
@@ -467,181 +668,427 @@ export const AgentsCenterPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* CARDS DE INDICADORES / MÉTRICAS */}
+      {/* CARDS DE INDICADORES DO AGENTE DE IDENTIFICAÇÃO DE CARGAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-slate-200 shadow-2xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Processado
+              Cargas Vinculadas
             </CardTitle>
-            <Mail className="h-4 w-4 text-indigo-600" />
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold text-slate-900">
-              {config?.processed_count_total || logs.length}
+              {autoMatchedCount + manuallyConfirmedCount}
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              <span className="text-emerald-600 font-semibold">{processedSuccessCount}</span>{' '}
-              classificados com sucesso
+              <span className="text-emerald-600 font-semibold">{autoMatchedCount}</span> automáticas
+              • <span className="text-blue-600 font-semibold">{manuallyConfirmedCount}</span>{' '}
+              manuais
             </p>
           </CardContent>
         </Card>
 
         <Card
-          className={`shadow-2xs ${exceptionsCount > 0 ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'}`}
+          className={`shadow-2xs ${
+            pendingReviewCount > 0
+              ? 'border-amber-300 bg-amber-50/30 ring-1 ring-amber-300'
+              : 'border-slate-200'
+          }`}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-amber-900 uppercase tracking-wider flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-              Exceções / Pendências
+              Pendências de Revisão
             </CardTitle>
             <HelpCircle className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-extrabold text-amber-950">{exceptionsCount}</div>
-            <p className="text-xs text-amber-700 mt-1">Exigem intervenção manual de responsável</p>
+            <div className="text-2xl font-extrabold text-amber-950">{pendingReviewCount}</div>
+            <p className="text-xs text-amber-800 mt-1 font-medium">
+              Ambiguidade ou divergência detectada
+            </p>
           </CardContent>
         </Card>
 
         <Card className="border-slate-200 shadow-2xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Duplicados Ignorados
+            <CardTitle className="text-xs font-semibold text-purple-900 uppercase tracking-wider">
+              Duplicidades Bloqueadas
             </CardTitle>
-            <RefreshCw className="h-4 w-4 text-slate-400" />
+            <ShieldCheck className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-extrabold text-slate-900">{duplicatesCount}</div>
-            <p className="text-xs text-slate-500 mt-1">Deduplicação automática por message_id</p>
+            <div className="text-2xl font-extrabold text-purple-950">{duplicatesCount}</div>
+            <p className="text-xs text-slate-500 mt-1">CT-e já existente impedido</p>
           </CardContent>
         </Card>
 
         <Card className="border-slate-200 shadow-2xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Última Execução
+              Última Execução Cargas
             </CardTitle>
             <Clock className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
             <div className="text-sm font-bold text-slate-800 truncate">
-              {config?.last_run_at
-                ? new Date(config.last_run_at).toLocaleTimeString('pt-BR', {
+              {cargoConfig?.last_run_at
+                ? new Date(cargoConfig.last_run_at).toLocaleTimeString('pt-BR', {
                     hour: '2-digit',
                     minute: '2-digit',
                     day: '2-digit',
                     month: '2-digit',
                   })
-                : 'Não executado'}
+                : 'Recente'}
             </div>
             <p
               className="text-[11px] text-slate-500 mt-1 truncate"
-              title={config?.last_run_status || 'Operação ativa'}
+              title={cargoConfig?.last_run_summary}
             >
-              {config?.last_run_status || 'Monitoramento regular'}
+              {cargoConfig?.last_run_summary || 'Monitoramento regular'}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* TABELA DE HISTÓRICO DE E-MAILS E DOCUMENTOS */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="pb-3 border-b border-slate-200/80">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>Histórico de E-mails & Ações do Agente</span>
-                <Badge variant="outline" className="text-xs">
-                  {filteredLogs.length} registros
-                </Badge>
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Acompanhamento das mensagens recebidas, arquivos extraídos e ações executadas
-              </CardDescription>
+      {/* ABAS OPERACIONAIS: CARGAS IDENTIFICADAS (ETAPA 2) VS E-MAILS (ETAPA 1) */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <Button
+          size="sm"
+          variant={activeTab === 'cargo' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('cargo')}
+          className="text-xs font-bold gap-1.5 h-8"
+        >
+          <FileCheck2 className="h-4 w-4" />
+          <span>Etapa 2: Cargas Identificadas & Pendências</span>
+          <Badge className="ml-1 text-[10px] bg-white text-slate-900">
+            {cargoIdentifications.length}
+          </Badge>
+        </Button>
+
+        <Button
+          size="sm"
+          variant={activeTab === 'emails' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('emails')}
+          className="text-xs font-semibold gap-1.5 h-8"
+        >
+          <Mail className="h-4 w-4" />
+          <span>Etapa 1: Histórico de E-mails</span>
+          <Badge variant="outline" className="ml-1 text-[10px]">
+            {emailLogs.length}
+          </Badge>
+        </Button>
+      </div>
+
+      {/* CONTEÚDO DA ABA DE CARGAS IDENTIFICADAS */}
+      {activeTab === 'cargo' && (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-200/80">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Documentos Fiscais & Vínculo com Viagens</span>
+                  <Badge variant="outline" className="text-xs">
+                    {filteredCargoIdentifications.length} de {cargoIdentifications.length} registros
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Acompanhamento de documentos XML cruzados pelo agente, ordens de carregamento
+                  vinculadas e pendências
+                </CardDescription>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to="/email-agent-training">
+                  <Button size="sm" variant="outline" className="text-xs gap-1.5 h-8">
+                    <span>Parâmetros de Cruzamento</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={loadData}
+                  disabled={loading}
+                  className="h-8 w-8 p-0"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Barra de Busca e Filtros de Carga */}
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por NF-e, emitente, placa ou código de viagem..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 text-xs h-8 bg-slate-50/50"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                <Button
+                  size="sm"
+                  variant={cargoFilter === 'all' ? 'default' : 'outline'}
+                  onClick={() => setCargoFilter('all')}
+                  className="text-xs h-8 px-2.5"
+                >
+                  Todos ({cargoIdentifications.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={cargoFilter === 'pending' ? 'default' : 'outline'}
+                  onClick={() => setCargoFilter('pending')}
+                  className={`text-xs h-8 px-2.5 ${
+                    pendingReviewCount > 0
+                      ? 'border-amber-400 text-amber-900 bg-amber-50 font-bold'
+                      : ''
+                  }`}
+                >
+                  Pendências ({pendingReviewCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={cargoFilter === 'auto' ? 'default' : 'outline'}
+                  onClick={() => setCargoFilter('auto')}
+                  className="text-xs h-8 px-2.5"
+                >
+                  Auto-Vínculos ({autoMatchedCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={cargoFilter === 'confirmed' ? 'default' : 'outline'}
+                  onClick={() => setCargoFilter('confirmed')}
+                  className="text-xs h-8 px-2.5"
+                >
+                  Confirmados ({manuallyConfirmedCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={cargoFilter === 'rejected' ? 'default' : 'outline'}
+                  onClick={() => setCargoFilter('rejected')}
+                  className="text-xs h-8 px-2.5"
+                >
+                  Bloqueados/Rejeitados ({duplicatesCount})
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            {filteredCargoIdentifications.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                <FileCheck2 className="h-8 w-8 mx-auto text-slate-300 stroke-1 mb-2" />
+                <p className="font-semibold text-slate-700">
+                  Nenhum documento encontrado para o filtro atual.
+                </p>
+                <p className="text-slate-400 mt-0.5">
+                  Clique em &ldquo;Identificar Cargas&rdquo; para cruzar as NF-es com as viagens
+                  cadastradas.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">NF-e & Chave de Acesso</th>
+                      <th className="p-3">Emitente & Destinatário</th>
+                      <th className="p-3">Sinais Detectados</th>
+                      <th className="p-3">Viagem Vinculada</th>
+                      <th className="p-3">Status da Identificação</th>
+                      <th className="p-3 text-right">Ação Operacional</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredCargoIdentifications.map((ident) => {
+                      const doc =
+                        ident.expand?.fiscal_document_id || fiscalMap.get(ident.fiscal_document_id)
+                      const signals = Array.isArray(ident.matching_signals)
+                        ? ident.matching_signals
+                        : typeof ident.matching_signals === 'string' && ident.matching_signals
+                          ? JSON.parse(ident.matching_signals)
+                          : []
+
+                      return (
+                        <tr key={ident.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3 max-w-xs">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>NF-e nº {doc?.nfe_number || '—'}</span>
+                              {doc?.series && (
+                                <Badge variant="outline" className="text-[9px] px-1 py-0">
+                                  Série {doc.series}
+                                </Badge>
+                              )}
+                            </div>
+                            <div
+                              className="font-mono text-[10px] text-slate-500 truncate mt-0.5"
+                              title={doc?.access_key}
+                            >
+                              Chave: {doc?.access_key}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Valor:{' '}
+                              {(doc?.total_value || 0).toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}{' '}
+                              • Peso: {((doc?.weight_kg || 0) / 1000).toFixed(1)}t
+                            </div>
+                          </td>
+
+                          <td className="p-3 max-w-xs">
+                            <div
+                              className="font-semibold text-slate-800 truncate"
+                              title={doc?.issuer_name}
+                            >
+                              De: {doc?.issuer_name || '—'}
+                            </div>
+                            <div
+                              className="text-[10px] text-slate-500 truncate mt-0.5"
+                              title={doc?.recipient_name}
+                            >
+                              Para: {doc?.recipient_name || '—'}
+                            </div>
+                            {doc?.detected_carrier_name && (
+                              <div className="text-[10px] text-indigo-600 font-medium truncate mt-0.5">
+                                Transp: {doc.detected_carrier_name}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-3 max-w-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {doc?.detected_plate ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] bg-slate-50 font-mono"
+                                >
+                                  Placa: {doc.detected_plate}
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] text-amber-700 border-amber-300"
+                                >
+                                  Sem Placa no XML
+                                </Badge>
+                              )}
+                              {doc?.detected_driver_name && (
+                                <Badge variant="outline" className="text-[9px] bg-slate-50">
+                                  Condutor: {doc.detected_driver_name.split(' ')[0]}
+                                </Badge>
+                              )}
+                            </div>
+                            {signals.length > 0 && (
+                              <div className="text-[10px] text-emerald-700 font-medium mt-1">
+                                {signals.length} sinais confirmados
+                              </div>
+                            )}
+                            {ident.divergence_reasons && (
+                              <div className="text-[10px] text-amber-800 bg-amber-50 p-1 rounded mt-1 border border-amber-200 leading-tight">
+                                {ident.divergence_reasons}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-3 whitespace-nowrap">
+                            {ident.trip_code ? (
+                              <div>
+                                <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                                  {ident.trip_code}
+                                </span>
+                                {ident.confidence_score > 0 && (
+                                  <div className="text-[10px] text-slate-500 mt-1">
+                                    Confiança: {ident.confidence_score}%
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-amber-800 font-medium text-xs">
+                                <span>Não vinculada</span>
+                                {ident.possible_trip_ids && (
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                    Opções: {ident.possible_trip_ids}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-3 whitespace-nowrap">
+                            {getMatchStatusBadge(ident.match_status)}
+                            {ident.cte_ready && (
+                              <div className="text-[10px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Apto para emissão
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-3 text-right whitespace-nowrap">
+                            {ident.match_status === 'pending_human_review' ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenResolveModal(ident)}
+                                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold gap-1 h-7"
+                              >
+                                <AlertCircle className="h-3.5 w-3.5" />
+                                Resolver Pendência
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenResolveModal(ident)}
+                                className="text-xs h-7 text-slate-600"
+                              >
+                                Detalhes / Alterar
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* CONTEÚDO DA ABA DE E-MAILS (ETAPA 1) */}
+      {activeTab === 'emails' && (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-200/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Histórico de E-mails Coletados (Etapa 1)</span>
+                  <Badge variant="outline" className="text-xs">
+                    {emailLogs.length} registros
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Triagem e extração segura de XML e anexos executada pelo agente
+                </CardDescription>
+              </div>
+
               <Link to="/email-agent-training">
                 <Button size="sm" variant="outline" className="text-xs gap-1.5 h-8">
-                  <span>Regras e Treinamento</span>
+                  <span>Regras de E-mail</span>
                   <ExternalLink className="h-3 w-3" />
                 </Button>
               </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={loadData}
-                disabled={loading}
-                className="h-8 w-8 p-0"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
             </div>
-          </div>
-
-          {/* Barra de Filtros e Busca */}
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-3">
-            <div className="relative flex-1 w-full">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-              <Input
-                type="text"
-                placeholder="Buscar por remetente, assunto ou código de viagem..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 text-xs h-8 bg-slate-50/50"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-              <Button
-                size="sm"
-                variant={statusFilter === 'all' ? 'default' : 'outline'}
-                onClick={() => setStatusFilter('all')}
-                className="text-xs h-8 px-2.5"
-              >
-                Todos ({logs.length})
-              </Button>
-              <Button
-                size="sm"
-                variant={statusFilter === 'processed' ? 'default' : 'outline'}
-                onClick={() => setStatusFilter('processed')}
-                className="text-xs h-8 px-2.5"
-              >
-                Processados ({processedSuccessCount})
-              </Button>
-              <Button
-                size="sm"
-                variant={statusFilter === 'needs_analysis' ? 'default' : 'outline'}
-                onClick={() => setStatusFilter('needs_analysis')}
-                className={`text-xs h-8 px-2.5 ${exceptionsCount > 0 ? 'border-rose-300 text-rose-700' : ''}`}
-              >
-                Exceções ({exceptionsCount})
-              </Button>
-              <Button
-                size="sm"
-                variant={statusFilter === 'duplicate' ? 'default' : 'outline'}
-                onClick={() => setStatusFilter('duplicate')}
-                className="text-xs h-8 px-2.5"
-              >
-                Duplicados ({duplicatesCount})
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {filteredLogs.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-xs">
-              <Mail className="h-8 w-8 mx-auto text-slate-300 stroke-1 mb-2" />
-              <p className="font-semibold text-slate-700">
-                Nenhum e-mail encontrado para o filtro atual.
-              </p>
-              <p className="text-slate-400 mt-0.5">
-                Clique em &ldquo;Executar Agora&rdquo; para sincronizar mensagens das caixas de
-                correio conectadas.
-              </p>
-            </div>
-          ) : (
+          </CardHeader>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
@@ -650,12 +1097,12 @@ export const AgentsCenterPage: React.FC = () => {
                     <th className="p-3">Remetente & Assunto</th>
                     <th className="p-3">Classificação</th>
                     <th className="p-3">Documentos Extraídos</th>
-                    <th className="p-3">Ação Executada / Regra</th>
+                    <th className="p-3">Ação Executada</th>
                     <th className="p-3">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredLogs.map((log) => (
+                  {emailLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="p-3 whitespace-nowrap">
                         <div className="font-medium text-slate-900">
@@ -668,10 +1115,7 @@ export const AgentsCenterPage: React.FC = () => {
                               })
                             : 'Recente'}
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="text-[9px] uppercase tracking-wider px-1 py-0 mt-0.5"
-                        >
+                        <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 mt-0.5">
                           {log.provider}
                         </Badge>
                       </td>
@@ -686,63 +1130,189 @@ export const AgentsCenterPage: React.FC = () => {
                         >
                           De: {log.sender}
                         </div>
-                        {log.customer_identified && (
-                          <div className="text-[10px] text-indigo-600 font-medium truncate mt-0.5">
-                            Cliente: {log.customer_identified}
-                          </div>
-                        )}
                       </td>
 
                       <td className="p-3 whitespace-nowrap">
-                        {getClassificationBadge(log.classification)}
-                        {log.trip_code && (
-                          <div className="text-[10px] font-mono text-indigo-700 mt-1 font-semibold">
-                            Viagem: {log.trip_code}
-                          </div>
-                        )}
+                        <Badge variant="outline" className="text-[10px]">
+                          {log.classification}
+                        </Badge>
                       </td>
 
                       <td className="p-3 max-w-xs">
                         <div className="text-slate-800 text-xs font-medium">
                           {log.attachments_summary || 'Nenhum anexo'}
                         </div>
-                        {log.snippet && (
-                          <div
-                            className="text-[10px] text-slate-400 line-clamp-1 mt-0.5"
-                            title={log.snippet}
-                          >
-                            &ldquo;{log.snippet}&rdquo;
-                          </div>
-                        )}
                       </td>
 
                       <td className="p-3 max-w-xs">
                         <div className="text-slate-700 text-xs leading-snug">
                           {log.execution_result || 'Triagem realizada'}
                         </div>
-                        {log.matched_rule_name && (
-                          <div className="text-[10px] text-slate-500 truncate mt-0.5 font-medium">
-                            Regra: {log.matched_rule_name}
-                          </div>
-                        )}
-                        {log.exception_details && (
-                          <div className="text-[10px] text-rose-600 font-medium mt-1">
-                            Alerta: {log.exception_details}
-                          </div>
-                        )}
                       </td>
 
                       <td className="p-3 whitespace-nowrap">
-                        {getStatusBadge(log.process_status)}
+                        <Badge
+                          className={`text-[10px] ${
+                            log.process_status === 'processed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {log.process_status}
+                        </Badge>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* MODAL DE RESOLUÇÃO MANUAL DE VÍNCULO DE CARGA (RESPONSÁVEL HUMANO) */}
+      <Dialog open={resolveModalOpen} onOpenChange={setResolveModalOpen}>
+        <DialogContent className="max-w-2xl bg-white p-6 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <FileCheck2 className="h-5 w-5 text-indigo-600" />
+              <span>Revisão Humana de Vínculo de Carga</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Valide as ordens de carregamento possíveis e confirme a associação correta ou rejeite
+              a carga.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedIdentification && (
+            <div className="space-y-4 pt-2 text-xs">
+              {/* Resumo do Documento Fiscal */}
+              {(() => {
+                const doc =
+                  selectedIdentification.expand?.fiscal_document_id ||
+                  fiscalMap.get(selectedIdentification.fiscal_document_id)
+                return (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-slate-900">
+                        NF-e nº {doc?.nfe_number || '—'}
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        Valor:{' '}
+                        {(doc?.total_value || 0).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-slate-600">
+                      <div>
+                        <strong>Emitente:</strong> {doc?.issuer_name} (CNPJ: {doc?.issuer_cnpj})
+                      </div>
+                      <div>
+                        <strong>Destinatário:</strong> {doc?.recipient_name}
+                      </div>
+                      <div>
+                        <strong>Placa Detectada no XML:</strong>{' '}
+                        {doc?.detected_plate ? (
+                          <span className="font-mono font-bold text-slate-900">
+                            {doc.detected_plate}
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 italic">Não informada</span>
+                        )}
+                      </div>
+                      <div>
+                        <strong>Peso:</strong> {((doc?.weight_kg || 0) / 1000).toFixed(1)} toneladas
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Alerta de Divergência ou Ambiguidade */}
+              {selectedIdentification.divergence_reasons && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-xs text-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <span>Motivo da Intervenção Humana:</span>
+                  </div>
+                  <p className="text-xs leading-relaxed">
+                    {selectedIdentification.divergence_reasons}
+                  </p>
+                </div>
+              )}
+
+              {/* Seleção da Viagem / Ordem de Carregamento Correta */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 block">
+                  Selecione a Ordem de Carregamento (Viagem) Correspondente:
+                </label>
+                <select
+                  value={selectedTripId}
+                  onChange={(e) => setSelectedTripId(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Selecione uma viagem cadastrada --</option>
+                  {trips.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trip_code} • {t.origin_city}/{t.origin_state} ➔ {t.destination_city}/
+                      {t.destination_state} ({t.cargo_type} - {(t.weight_kg / 1000).toFixed(1)}t)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Observações da Revisão Humana */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700 block">
+                  Parecer / Observação do Responsável:
+                </label>
+                <Input
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder="Ex.: Confirmado vínculo com veículo reserva após conferência com expedição."
+                  className="text-xs"
+                />
+              </div>
+
+              <DialogFooter className="pt-3 border-t flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRejectLink}
+                  disabled={resolving}
+                  className="text-xs"
+                >
+                  Rejeitar Vínculo
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setResolveModalOpen(false)}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleConfirmLink}
+                    disabled={resolving}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1"
+                  >
+                    {resolving ? 'Salvando...' : 'Confirmar Vínculo da Carga'}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Documentação Viva da Tela */}
       <ScreenLogicModal
