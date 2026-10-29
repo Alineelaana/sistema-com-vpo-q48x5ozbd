@@ -115,7 +115,6 @@ export async function createUser(data: {
   formData.append('status', 'active')
   formData.append('data_treatment_purpose', data.data_treatment_purpose)
   formData.append('is_anonymized', 'false')
-  formData.append('verified', 'true')
   formData.append('must_change_password', data.must_change_password ? 'true' : 'false')
   formData.append('inactivity_timeout', String(data.inactivity_timeout || 30))
 

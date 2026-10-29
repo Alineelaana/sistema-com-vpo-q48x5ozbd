@@ -51,6 +51,7 @@ import { UserFormModal, type UserFormSubmitData } from '@/components/UserFormMod
 import { AnonymizeModal } from '@/components/AnonymizeModal'
 import { ExportUserModal } from '@/components/ExportUserModal'
 import pb from '@/lib/pocketbase/client'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { formatCPF } from '@/lib/cpfUtils'
 
 export const UsersPage: React.FC = () => {
@@ -78,8 +79,7 @@ export const UsersPage: React.FC = () => {
     } catch (err: unknown) {
       toast({
         title: 'Erro ao carregar usuários',
-        description:
-          (err as { message?: string })?.message || 'Verifique suas permissões de administrador.',
+        description: getErrorMessage(err) || 'Verifique suas permissões de administrador.',
         variant: 'destructive',
       })
     } finally {

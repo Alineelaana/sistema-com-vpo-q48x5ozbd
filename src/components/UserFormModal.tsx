@@ -37,6 +37,7 @@ import {
   DEFAULT_TREATMENT_PURPOSE,
 } from '@/types/userManagement'
 import pb from '@/lib/pocketbase/client'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { formatCPF, isValidCPF, cleanCPF } from '@/lib/cpfUtils'
 
 export interface UserFormSubmitData {
@@ -257,7 +258,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       onClose()
     } catch (err: unknown) {
       setError(
-        (err as { message?: string })?.message ||
+        getErrorMessage(err) ||
           'Erro ao salvar usuário. Verifique se login, e-mail ou CPF já não estão cadastrados.',
       )
     } finally {
