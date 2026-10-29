@@ -65,12 +65,30 @@ export const LoginPage: React.FC = () => {
     }
   }
 
+  const validatePassword = (pass: string): boolean => {
+    if (pass.length < 8) return false
+    const hasLetter = /[a-zA-Z]/.test(pass)
+    const hasNumber = /[0-9]/.test(pass)
+    return hasLetter && hasNumber
+  }
+
+  const [acceptPolicy, setAcceptPolicy] = useState(true)
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (signupPassword.length < 8) {
+    if (!validatePassword(signupPassword)) {
       toast({
-        title: 'Senha muito curta',
-        description: 'A senha deve ter no mínimo 8 caracteres.',
+        title: 'Política de Senha Forte',
+        description: 'A senha deve conter no mínimo 8 caracteres, com letras e números.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!acceptPolicy) {
+      toast({
+        title: 'Aceite Obrigatório',
+        description: 'É necessário concordar com a Política de Privacidade (LGPD).',
         variant: 'destructive',
       })
       return
@@ -81,7 +99,7 @@ export const LoginPage: React.FC = () => {
       await signup(signupEmail, signupPassword, signupName)
       toast({
         title: 'Conta criada com sucesso!',
-        description: 'Você já está conectado à plataforma.',
+        description: 'Você já está conectado à plataforma com perfil inicial.',
       })
       navigate('/')
     } catch (err: unknown) {
@@ -269,7 +287,7 @@ export const LoginPage: React.FC = () => {
 
                 <div className="space-y-1">
                   <Label htmlFor={registerPasswordId} className="text-xs text-slate-300">
-                    Senha de Acesso (mín. 8 caracteres)
+                    Senha Forte (mín. 8 caracteres com letras e números)
                   </Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
@@ -285,6 +303,19 @@ export const LoginPage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                <label className="flex items-start gap-2 cursor-pointer p-2 rounded bg-slate-900/60 border border-slate-800 text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={acceptPolicy}
+                    onChange={(e) => setAcceptPolicy(e.target.checked)}
+                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>
+                    Li e concordo com a <strong>Política de Privacidade (LGPD v1.0)</strong> para
+                    tratamento estrito de dados operacionais e de transporte.
+                  </span>
+                </label>
 
                 <Button
                   type="submit"

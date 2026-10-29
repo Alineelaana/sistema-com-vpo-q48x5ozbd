@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import {
   LayoutDashboard,
   Truck,
-  Users,
+  Users as UsersIcon,
   Navigation,
   FileText,
   Calculator,
@@ -20,16 +20,23 @@ import {
   Sparkles,
   ChevronRight,
   ExternalLink,
+  Shield,
+  History,
+  Lock,
+  User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
+import type { AppModule } from '@/types/userManagement'
+import { ProfileModal } from '@/components/ProfileModal'
 
 export default function Layout() {
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, currentUser, role, roleConfig, hasPermission, logout, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   // Se estiver na tela de login, não mostra sidebar
   if (location.pathname === '/login') {
@@ -45,22 +52,88 @@ export default function Layout() {
     navigate('/login')
   }
 
-  const navItems = [
-    { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+  interface NavItemDef {
+    label: string
+    to: string
+    icon: React.ComponentType<{ className?: string }>
+    badge?: string
+    highlight?: boolean
+    module?: AppModule
+    adminOnly?: boolean
+  }
+
+  const allNavItems: NavItemDef[] = [
+    { label: 'Dashboard', to: '/', icon: LayoutDashboard, module: 'dashboard' },
     // Módulos Fusion by nstech
-    { label: 'Entregas & Coletas', to: '/deliveries', icon: Package, badge: 'Fusion' },
-    { label: 'Roteirização', to: '/routing', icon: Navigation, badge: 'Fusion' },
-    { label: 'Torre de Controle', to: '/control-tower', icon: Radio, badge: 'Realtime' },
-    { label: 'Auditoria de Frete', to: '/freight-audit', icon: Scale, badge: 'Fusion' },
+    {
+      label: 'Entregas & Coletas',
+      to: '/deliveries',
+      icon: Package,
+      badge: 'Fusion',
+      module: 'deliveries',
+    },
+    { label: 'Roteirização', to: '/routing', icon: Navigation, badge: 'Fusion', module: 'routing' },
+    {
+      label: 'Torre de Controle',
+      to: '/control-tower',
+      icon: Radio,
+      badge: 'Realtime',
+      module: 'control_tower',
+    },
+    {
+      label: 'Auditoria de Frete',
+      to: '/freight-audit',
+      icon: Scale,
+      badge: 'Fusion',
+      module: 'freight_audit',
+    },
     // Operações de Frota e VPO
-    { label: 'Cálculo VPO', to: '/vpo-calc', icon: Calculator, highlight: true },
-    { label: 'Viagens & Cargas', to: '/trips', icon: Truck },
-    { label: 'Documentos CT-e', to: '/cte', icon: FileText },
-    { label: 'Veículos / Frota', to: '/vehicles', icon: Truck },
-    { label: 'Motoristas', to: '/drivers', icon: Users },
-    { label: 'Multas & Infrações', to: '/fines', icon: AlertTriangle },
-    { label: 'Dados da Empresa', to: '/company', icon: Building2 },
+    {
+      label: 'Cálculo VPO',
+      to: '/vpo-calc',
+      icon: Calculator,
+      highlight: true,
+      module: 'vpo_calc',
+    },
+    { label: 'Viagens & Cargas', to: '/trips', icon: Truck, module: 'trips' },
+    { label: 'Documentos CT-e', to: '/cte', icon: FileText, module: 'cte' },
+    { label: 'Veículos / Frota', to: '/vehicles', icon: Truck, module: 'vehicles' },
+    { label: 'Motoristas', to: '/drivers', icon: UsersIcon, module: 'drivers' },
+    { label: 'Multas & Infrações', to: '/fines', icon: AlertTriangle, module: 'fines' },
+    { label: 'Dados da Empresa', to: '/company', icon: Building2, module: 'company' },
+    // Gestão de Usuários & LGPD (Admin only)
+    {
+      label: 'Usuários & LGPD',
+      to: '/users',
+      icon: UsersIcon,
+      badge: 'LGPD',
+      adminOnly: true,
+      module: 'users',
+    },
+    {
+      label: 'Trilha de Auditoria',
+      to: '/audit',
+      icon: History,
+      badge: 'Art. 37',
+      adminOnly: true,
+      module: 'audit',
+    },
+    // Termos de Privacidade
+    {
+      label: 'Política Privacidade',
+      to: '/privacy-policy',
+      icon: ShieldCheck,
+      module: 'privacy_policy',
+    },
   ]
+
+  // Filtra itens de menu conforme o perfil autenticado
+  const navItems = allNavItems.filter((item) => {
+    if (role === 'admin') return true
+    if (item.adminOnly) return false
+    if (item.module && !hasPermission(item.module)) return false
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
@@ -131,15 +204,30 @@ export default function Layout() {
         {/* Rodapé do Usuário & Logout */}
         <div className="p-3 border-t border-slate-800 bg-slate-950/40">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="min-w-0 pr-2">
-              <div className="text-xs font-semibold text-white truncate">
-                {user?.name || 'Operador Connect'}
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="min-w-0 pr-2 text-left hover:opacity-80 transition-opacity"
+              title="Clique para gerenciar seu perfil"
+            >
+              <div className="text-xs font-semibold text-white truncate flex items-center gap-1.5">
+                <span>{user?.name || 'Operador Connect'}</span>
               </div>
-              <div className="text-[10px] text-slate-400 truncate">
-                {user?.email || 'admin@sistema.com'}
+              <div className="text-[10px] text-indigo-400 font-medium truncate flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {roleConfig.label}
               </div>
-            </div>
+            </button>
             <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setProfileModalOpen(true)}
+                className="text-slate-400 hover:text-white hover:bg-slate-800 h-8 w-8 p-0"
+                title="Meu Perfil"
+              >
+                <User className="h-4 w-4" />
+              </Button>
               <NotificationCenter />
               <Button
                 variant="ghost"
@@ -234,6 +322,9 @@ export default function Layout() {
           <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
             Sistema Ativo • Connect VPO & Gestão de Frotas
+            <Badge variant="outline" className={`ml-2 text-[10px] ${roleConfig.badgeColor}`}>
+              Perfil: {roleConfig.label}
+            </Badge>
           </div>
           <div className="flex items-center gap-3">
             <div className="border-r border-slate-200 pr-3">
@@ -241,20 +332,33 @@ export default function Layout() {
                 <NotificationCenter />
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="flex items-center gap-2 hover:bg-slate-50 p-1 rounded-lg transition-colors text-left"
+              title="Gerenciar Meu Perfil"
+            >
               <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
                 {(user?.name || 'U').charAt(0)}
               </div>
-              <span className="text-xs font-semibold text-slate-700">
-                {user?.name || 'Usuário'}
-              </span>
-            </div>
+              <div>
+                <span className="text-xs font-semibold text-slate-700 block leading-tight">
+                  {user?.name || 'Usuário'}
+                </span>
+                <span className="text-[10px] text-slate-400 block leading-none">
+                  {currentUser?.role_title || roleConfig.label}
+                </span>
+              </div>
+            </button>
           </div>
         </header>
 
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
+
+        {/* Modal de Gestão do Próprio Perfil */}
+        <ProfileModal open={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
       </main>
     </div>
   )

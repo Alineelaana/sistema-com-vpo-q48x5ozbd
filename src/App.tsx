@@ -20,6 +20,9 @@ import { DeliveriesPage } from './pages/DeliveriesPage'
 import { RoutingPage } from './pages/RoutingPage'
 import { ControlTowerPage } from './pages/ControlTowerPage'
 import { FreightAuditPage } from './pages/FreightAuditPage'
+import { UsersPage } from './pages/UsersPage'
+import { AuditTrailPage } from './pages/AuditTrailPage'
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -35,18 +38,72 @@ const App = () => (
           {/* Rotas protegidas dentro do Layout */}
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
+              {/* Dashboard acessível a todos os perfis autenticados */}
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/deliveries" element={<DeliveriesPage />} />
-              <Route path="/routing" element={<RoutingPage />} />
-              <Route path="/control-tower" element={<ControlTowerPage />} />
-              <Route path="/freight-audit" element={<FreightAuditPage />} />
-              <Route path="/vpo-calc" element={<VpoPage />} />
-              <Route path="/trips" element={<TripsPage />} />
-              <Route path="/cte" element={<CtePage />} />
-              <Route path="/vehicles" element={<VehiclesPage />} />
-              <Route path="/drivers" element={<DriversPage />} />
-              <Route path="/fines" element={<FinesPage />} />
-              <Route path="/company" element={<CompanyPage />} />
+
+              {/* Módulo de Entregas & Coletas */}
+              <Route element={<ProtectedRoute requiredModule="deliveries" />}>
+                <Route path="/deliveries" element={<DeliveriesPage />} />
+              </Route>
+
+              {/* Módulo de Roteirização */}
+              <Route element={<ProtectedRoute requiredModule="routing" />}>
+                <Route path="/routing" element={<RoutingPage />} />
+              </Route>
+
+              {/* Módulo Torre de Controle */}
+              <Route element={<ProtectedRoute requiredModule="control_tower" />}>
+                <Route path="/control-tower" element={<ControlTowerPage />} />
+              </Route>
+
+              {/* Módulo Auditoria de Frete */}
+              <Route element={<ProtectedRoute requiredModule="freight_audit" />}>
+                <Route path="/freight-audit" element={<FreightAuditPage />} />
+              </Route>
+
+              {/* Módulo Cálculo VPO */}
+              <Route element={<ProtectedRoute requiredModule="vpo_calc" />}>
+                <Route path="/vpo-calc" element={<VpoPage />} />
+              </Route>
+
+              {/* Módulo Viagens */}
+              <Route element={<ProtectedRoute requiredModule="trips" />}>
+                <Route path="/trips" element={<TripsPage />} />
+              </Route>
+
+              {/* Módulo CT-e */}
+              <Route element={<ProtectedRoute requiredModule="cte" />}>
+                <Route path="/cte" element={<CtePage />} />
+              </Route>
+
+              {/* Módulo Veículos */}
+              <Route element={<ProtectedRoute requiredModule="vehicles" />}>
+                <Route path="/vehicles" element={<VehiclesPage />} />
+              </Route>
+
+              {/* Módulo Motoristas */}
+              <Route element={<ProtectedRoute requiredModule="drivers" />}>
+                <Route path="/drivers" element={<DriversPage />} />
+              </Route>
+
+              {/* Módulo Multas */}
+              <Route element={<ProtectedRoute requiredModule="fines" />}>
+                <Route path="/fines" element={<FinesPage />} />
+              </Route>
+
+              {/* Módulo Dados da Empresa */}
+              <Route element={<ProtectedRoute requiredModule="company" />}>
+                <Route path="/company" element={<CompanyPage />} />
+              </Route>
+
+              {/* Módulo Gestão de Usuários (Apenas Administrador) */}
+              <Route element={<ProtectedRoute adminOnly />}>
+                <Route path="/users" element={<UsersPage />} />
+                <Route path="/audit" element={<AuditTrailPage />} />
+              </Route>
+
+              {/* Política de Privacidade e Termos (Acessível a todos) */}
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             </Route>
           </Route>
 
