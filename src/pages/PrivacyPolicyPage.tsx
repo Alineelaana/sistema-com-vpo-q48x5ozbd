@@ -149,10 +149,9 @@ export const PrivacyPolicyPage: React.FC = () => {
             A <strong>TransConnect Logística e Transportes Rodoviários Ltda</strong>{' '}
             (“Controladora”) assume o compromisso inequívoco com a privacidade, segurança da
             informação e proteção dos dados pessoais de seus colaboradores, motoristas autônomos,
-            clientes, parceiros e usuários da plataforma rodoviária{' '}
-            <strong>Connect VPO & CT-e</strong>, em estrita conformidade com a Lei Geral de Proteção
-            de Dados Pessoais (Lei nº 13.709/2018 - LGPD) e resoluções da Agência Nacional de
-            Transportes Terrestres (ANTT).
+            clientes, parceiros e usuários da plataforma rodoviária <strong>Ed Integração</strong>,
+            em estrita conformidade com a Lei Geral de Proteção de Dados Pessoais (Lei nº
+            13.709/2018 - LGPD) e resoluções da Agência Nacional de Transportes Terrestres (ANTT).
           </p>
         </section>
 

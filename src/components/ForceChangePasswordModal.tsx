@@ -100,7 +100,7 @@ export const ForceChangePasswordModal: React.FC<ForceChangePasswordModalProps> =
               Usuário: {currentUser?.name || currentUser?.login || currentUser?.email}
             </div>
             <p className="text-[11px] text-indigo-700">
-              Esta etapa é obrigatória antes de acessar os módulos operacionais do Connect VPO.
+              Esta etapa é obrigatória antes de acessar os módulos operacionais do Ed Integração.
             </p>
           </div>
 

@@ -50,7 +50,7 @@ export const LoginPage: React.FC = () => {
       await login(loginIdentifier, loginPassword)
       toast({
         title: 'Login realizado com sucesso',
-        description: 'Bem-vindo ao Sistema de Emissão e VPO!',
+        description: 'Bem-vindo ao Ed Integração!',
       })
       navigate('/')
     } catch (err: unknown) {
@@ -141,13 +141,13 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md space-y-6">
-        {/* Logo e Branding Connect */}
+        {/* Logo e Branding Ed Integração */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-indigo-600 shadow-xl shadow-indigo-500/20 text-white mb-1">
             <Truck className="h-8 w-8" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-1.5">
-            Connect <span className="text-indigo-400 font-extrabold">VPO & CT-e</span>
+            Ed <span className="text-indigo-400 font-extrabold">Integração</span>
           </h1>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
             Gestão rodoviária de cargas, cálculo automático de Vale Pedágio Obrigatório e emissão de
@@ -378,7 +378,7 @@ export const LoginPage: React.FC = () => {
         </Card>
 
         <div className="text-center text-xs text-slate-500">
-          Connect Sistemas • Emissão CT-e, MDF-e e Cálculo VPO ANTT
+          Ed Integração • Emissão CT-e, MDF-e e Cálculo VPO ANTT
         </div>
       </div>
     </div>

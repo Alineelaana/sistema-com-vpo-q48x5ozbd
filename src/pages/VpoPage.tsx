@@ -20,8 +20,8 @@ export const VpoPage: React.FC = () => {
                 Como o VPO é transferido para o CT-e?
               </h3>
               <p className="text-xs text-slate-600 max-w-2xl">
-                No Sistema Connect VPO, ao criar ou despachar uma Viagem, o valor calculado acima é
-                inserido automaticamente no grupo de informações de Vale-Pedágio do XML do
+                No Sistema Ed Integração, ao criar ou despachar uma Viagem, o valor calculado acima
+                é inserido automaticamente no grupo de informações de Vale-Pedágio do XML do
                 Conhecimento de Transporte (tag <code>vValePed</code>), cumprindo integralmente as
                 exigências de fiscalização da ANTT.
               </p>
