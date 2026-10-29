@@ -271,15 +271,16 @@ export const CTE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Documentos Fiscais (CT-e)',
   screenBadge: 'Fiscal • Conhecimento de Frete',
   lastUpdate: '2026-10-29',
-  version: '2.0.0',
+  version: '2.1.0',
   objective:
-    'Gerenciamento e emissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) via Provedor Fiscal Certificado (Nuvem Fiscal real). Transmissão sem qualquer simulação: documentos permanecem na fila enquanto aguardam resposta oficial da SEFAZ.',
+    'Gerenciamento e emissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) via Provedor Fiscal Certificado (Nuvem Fiscal real). Transmissão sem qualquer simulação: documentos permanecem na fila enquanto aguardam resposta oficial da SEFAZ. Uma vez autorizados oficialmente, alimentam a Etapa 4 da Central de Agentes para envio automático aos destinatários (tomador/remetente/destinatário) com DACTE e XML.',
   realFeatures: [
     'Transmissão para a SEFAZ através da API oficial Nuvem Fiscal (provedores Focus NFe e TecnoSpeed com interfaces preparadas)',
     'Destaque obrigatório e legal do Vale Pedágio Obrigatório (VPO)',
     'Tratamento honesto de status: Em Fila, Pendente SEFAZ, Autorizado e Rejeitado com mensagem do motivo oficial',
     'DACTE demonstrativo com protocolo e chave de acesso oficial',
     'Salvaguarda: documentos já autorizados são bloqueados contra retransmissão indevida',
+    'Integração com Etapa 4 de Envio: apenas CT-es com status authorized são despachados aos destinatários cadastrados com proteção anti-duplicação',
   ],
   fieldsAndButtons: [
     {
@@ -303,14 +304,18 @@ export const CTE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Regra Inegociável: NUNCA simular autorização fiscal. Sem credenciais cadastradas na tela Empresa, o CT-e permanece na fila como aguardando transmissão.',
     'CIOT e VPO são obrigações distintas e segregadas.',
     'CT-e autorizado perante a SEFAZ nunca pode ser retransmitido.',
+    'Apenas CT-e autorizado na SEFAZ pode ser despachado aos destinatários pela Etapa 4 (Agente de Envio Automático).',
   ],
   agentsAndAutomations: [
     'Orquestrador da Etapa 3 processa viagens da Etapa 2 gerando CT-es na fila para emissão.',
+    'Agente de Envio (Etapa 4 / hook dispatch_agent.pb.js) detecta CT-es autorizados e dispara e-mails aos contatos cadastrados.',
   ],
   validations: ['Validação de remetente, destinatário, valor da carga, frete e ambiente da SEFAZ.'],
-  integrations: ['Coleções cte_documents, trips, company_settings e Nuvem Fiscal API.'],
+  integrations: [
+    'Coleções cte_documents, trips, company_settings, document_dispatch_logs e Nuvem Fiscal API.',
+  ],
   flowsAndDependencies: [
-    'CT-es autorizados alimentam a montagem e transmissão de MDF-e na etapa subsequente.',
+    'CT-es autorizados alimentam a montagem de MDF-e na Etapa 3 e o despacho automático por e-mail na Etapa 4.',
   ],
   dataSourceAndDestination: {
     origin: 'Viagens operacionais e dados fiscais de embarcadores.',
@@ -325,15 +330,16 @@ export const MDFE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Manifesto Eletrônico de Documentos Fiscais (MDF-e)',
   screenBadge: 'Fiscal & VPO • Modelo 58',
   lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  version: '1.1.0',
   objective:
-    'Consolidação de cargas e manifesto de documentos fiscais eletrônicos (modelo 58) para transporte interestadual, agrupando exclusivamente CT-es autorizados.',
+    'Consolidação de cargas e manifesto de documentos fiscais eletrônicos (modelo 58) para transporte interestadual, agrupando exclusivamente CT-es autorizados. Quando autorizado, integra com a Etapa 4 para envio automático do DAMDFE e XML aos responsáveis da rota e transportador.',
   realFeatures: [
     'Consolidação automática dos CT-es autorizados da viagem',
     'Transmissão via Nuvem Fiscal ou enfileiramento seguro na ausência de credenciais',
     'Definição e validação do percurso interestadual de UFs',
     'Encerramento do manifesto no destino e cancelamento dentro dos prazos legais',
     'Visualização simplificada de DAMDFE com protocolo e chaves vinculadas',
+    'Elegibilidade para Etapa 4: manifesto com status authorized é enviado automaticamente aos contatos cadastrados para MDF-e',
   ],
   fieldsAndButtons: [
     {
@@ -355,14 +361,18 @@ export const MDFE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'Só podem ser consolidados no MDF-e documentos (CT-e) com status autorizado na SEFAZ.',
     'Nunca simular autorização fiscal: manifesto sem resposta oficial fica retido como fila/rascunho.',
+    'Envio da Etapa 4 restrito a manifestos autorizados, bloqueando envio de rascunhos ou manifestos pendentes.',
   ],
   agentsAndAutomations: [
     'Agente de regularização fiscal cria automaticamente o rascunho de MDF-e após CT-e pronto.',
+    'Agente de Envio Automático (Etapa 4) despacha DAMDFE e XML oficial aos condutores e expedição cadastrados.',
   ],
   validations: ['Obrigatoriedade de UFs de origem, destino e percurso compatíveis com a rota.'],
-  integrations: ['Coleções mdfe_documents, cte_documents, trips, vehicles e drivers.'],
+  integrations: [
+    'Coleções mdfe_documents, cte_documents, trips, vehicles, drivers e document_dispatch_logs.',
+  ],
   flowsAndDependencies: [
-    'Depende de CT-es autorizados para poder ser transmitido com validade jurídica.',
+    'Depende de CT-es autorizados para transmissão e alimenta o envio de documentos da rota na Etapa 4.',
   ],
   dataSourceAndDestination: {
     origin: 'CT-es autorizados da viagem.',
@@ -377,14 +387,15 @@ export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Código Identificador da Operação de Transportes (CIOT)',
   screenBadge: 'Fiscal & VPO • Res. ANTT 5.862/2019',
   lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  version: '1.1.0',
   objective:
-    'Controle da obrigatoriedade do CIOT para remuneração do frete na ANTT, com distinção estrita em relação ao VPO e perfil do transportador (ETC ou TAC-Equiparado).',
+    'Controle da obrigatoriedade do CIOT para remuneração do frete na ANTT, com distinção estrita em relação ao VPO e perfil do transportador (ETC ou TAC-Equiparado). Registros com protocolo oficial (status registered) são integrados à Etapa 4 da Central de Agentes para envio do comprovante aos contratantes e transportadores.',
   realFeatures: [
     'Registro do código CIOT de 16 dígitos e comprovante oficial fornecido pela IPEF',
     'Classificação de perfil do transportador (TAC-Equiparado, ETC, TAC-Independente)',
     'Integração com viagens operacionais e bloqueio de expedição configurável',
     'Salvaguarda contra promessas irreais: esclarece que não existe emissão mágica direta na ANTT sem IPEF homologada',
+    'Despacho na Etapa 4: CIOTs com status registered têm comprovantes enviados aos destinatários cadastrados',
   ],
   fieldsAndButtons: [
     {
@@ -401,14 +412,16 @@ export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'CIOT e VPO são obrigações DISTINTAS: possuem finalidades, coleções e normativas diferentes.',
     'Não prometer CIOT direto na ANTT sem custo: a integração exige credencial de IPEF cadastrada.',
+    'Apenas CIOTs devidamente registrados com protocolo IPEF/ANTT são enviados na Etapa 4.',
   ],
   agentsAndAutomations: [
     'Agente de regularização verifica a obrigatoriedade por viagem e gera pendência se faltar.',
+    'Agente de Envio Automático (Etapa 4) envia o comprovante de compliance de pagamento de frete.',
   ],
   validations: ['Validação do RNTRC do transportador e formato do código numérico de 16 dígitos.'],
-  integrations: ['Coleções ciot_records, trips e company_settings.'],
+  integrations: ['Coleções ciot_records, trips, company_settings e document_dispatch_logs.'],
   flowsAndDependencies: [
-    'Pendência de CIOT pode bloquear a autorização ou liberação da viagem se ativado na Empresa.',
+    'Pendência de CIOT bloqueia a regularização da viagem e impede o despacho de compliance na Etapa 4.',
   ],
   dataSourceAndDestination: {
     origin: 'Viagens contratadas e retorno de IPEFs.',
@@ -423,14 +436,15 @@ export const INSURANCE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Seguros & Averbação de Carga',
   screenBadge: 'Fiscal & VPO • Lei 14.599/2023',
   lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  version: '1.1.0',
   objective:
-    'Gestão de apólices de seguro de transporte rodoviário de cargas (RCTR-C obrigatório e RC-DC facultativo) e controle dos dossiês de averbação por viagem.',
+    'Gestão de apólices de seguro de transporte rodoviário de cargas (RCTR-C obrigatório e RC-DC facultativo) e controle dos dossiês de averbação por viagem. Dossiês com protocolo confirmado (status averbada) são integrados à Etapa 4 da Central de Agentes para envio do comprovante aos embarcadores e corretores.',
   realFeatures: [
     'Cadastro e controle de vigência de apólices de seguro (Porto Seguro, Tokio Marine, Sompo)',
     'Geração de dossiê de averbação com valor declarado e chave fiscal da carga',
     'Registro do protocolo de averbação e comprovante retornado pela seguradora ou AT&M',
     'Bloqueio automático de despacho de viagem sem seguro ativo quando configurado na Empresa',
+    'Despacho de comprovante na Etapa 4 para clientes que exigem compliance securitário prévio',
   ],
   fieldsAndButtons: [
     {
@@ -447,14 +461,18 @@ export const INSURANCE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'Lei nº 14.599/2023: o seguro RCTR-C é de contratação e averbação obrigatória do transportador.',
     'Carga sem averbação confirmada permanece na fila com status honesto.',
+    'Somente averbações com confirmação e protocolo AT&M/Seguradora são elegíveis para envio na Etapa 4.',
   ],
   agentsAndAutomations: [
     'Agente de regularização fiscal monta o dossiê de averbação para cada viagem identificada.',
+    'Agente de Envio Automático (Etapa 4) envia o comprovante de averbação conforme cadastro do destinatário.',
   ],
   validations: ['Vigência ativa da apólice e valor declarado compatível com a mercadoria.'],
-  integrations: ['Coleções insurance_policies, insurance_endorsements e trips.'],
+  integrations: [
+    'Coleções insurance_policies, insurance_endorsements, trips e document_dispatch_logs.',
+  ],
   flowsAndDependencies: [
-    'Averbação é o primeiro elo da esteira fiscal antes da transmissão do CT-e.',
+    'Averbação confirmada viabiliza a transmissão do CT-e e o envio dos comprovantes na Etapa 4.',
   ],
   dataSourceAndDestination: {
     origin: 'Apólices e dados de NF-e da carga.',

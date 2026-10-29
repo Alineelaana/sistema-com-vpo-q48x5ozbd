@@ -464,11 +464,11 @@ routerAdd(
             }
           }
 
-          // Se ambos os conectores do usuário ainda não estiverem autorizados na sessão,
-          // registrar o despacho de forma íntegra garantindo entrega operacional
+          // Se nenhum conector estiver conectado para o usuário, reportar o status de forma
+          // honesta em vez de simular sucesso (regra inegociável do produto)
           if (!sendSuccess && !errorMessage) {
-            sendSuccess = true
-            providerUsed = 'system_email'
+            errorMessage =
+              'Nenhuma caixa de e-mail (Gmail ou Outlook) conectada para o usuário autenticado. Conecte sua conta em Treinamento/Conectores para efetivar o envio.'
           }
 
           // Criar ou atualizar o log de despacho
@@ -667,8 +667,16 @@ routerAdd(
       }
 
       if (!sendSuccess) {
-        sendSuccess = true // fallback de envio operacional
-        providerUsed = 'system_email'
+        logRec.set('status', 'failed')
+        logRec.set('error_reason', errorMessage || 'Nenhuma caixa conectada para reenvio.')
+        e.app.save(logRec)
+
+        return e.json(400, {
+          success: false,
+          error:
+            errorMessage ||
+            'Não foi possível reenviar: conecte sua conta Gmail ou Outlook em Treinamento de Agentes.',
+        })
       }
 
       logRec.set('status', 'sent')

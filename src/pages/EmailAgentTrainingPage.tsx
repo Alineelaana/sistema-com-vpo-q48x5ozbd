@@ -1331,11 +1331,13 @@ export const EmailAgentTrainingPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm text-slate-900">Google Workspace / Gmail</span>
                   <Badge variant="outline" className="text-[10px]">
-                    OAuth 2.0 Pessoal
+                    OAuth 2.0 Pessoal (Entrada & Saída)
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-600 mt-1">
-                  Coleta de e-mails recebidos com anexos XML de NF-e e PDFs operacionais.
+                  Utilizado para a <strong>Etapa 1</strong> (coleta de NF-e recebidas) e para a{' '}
+                  <strong>Etapa 4</strong> (envio automático de CT-e, MDF-e e comprovantes
+                  autorizados a partir da sua própria caixa).
                 </p>
               </div>
               <ConnectorButton toolkit="gmail" name="Google Gmail" className="w-full text-xs" />
@@ -1346,11 +1348,13 @@ export const EmailAgentTrainingPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm text-slate-900">Microsoft 365 / Outlook</span>
                   <Badge variant="outline" className="text-[10px]">
-                    OAuth 2.0 Pessoal
+                    OAuth 2.0 Pessoal (Entrada & Saída)
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-600 mt-1">
-                  Integração corporativa com caixas Exchange Online e pastas operacionais.
+                  Utilizado para a <strong>Etapa 1</strong> (coleta de anexos operacionais) e para a{' '}
+                  <strong>Etapa 4</strong> (envio de documentos fiscais autorizados aos
+                  destinatários via Microsoft Graph).
                 </p>
               </div>
               <ConnectorButton
