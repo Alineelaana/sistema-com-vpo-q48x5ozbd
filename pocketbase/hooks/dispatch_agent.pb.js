@@ -286,6 +286,10 @@ routerAdd(
               sender_doc: companyCnpj,
               issued_at: ciot.getString('registered_at') || ciot.getString('created'),
               xml_content: '',
+              institution_provider:
+                ciot.getString('institution_provider') || 'IPEF Credenciada ANTT',
+              carrier_profile: ciot.getString('carrier_profile') || 'tac_equiparado',
+              freight_value: ciot.getInt('freight_value') || ciot.getFloat('freight_value') || 0,
             })
           }
         } catch (err) {
@@ -393,6 +397,13 @@ routerAdd(
             vpo: 'Comprovante Vale Pedágio Obrigatório',
           }
 
+          const profileLabels = {
+            tac: 'TAC (Autônomo)',
+            tac_equiparado: 'TAC-Equiparado (Frota até 3 veículos)',
+            etc: 'ETC (Empresa de Transporte de Cargas)',
+            ctc: 'CTC (Cooperativa de Transporte de Cargas)',
+          }
+
           const templateVariables = {
             nome_cliente:
               recip.getString('customer_name') || recip.getString('contact_name') || 'Cliente',
@@ -405,6 +416,12 @@ routerAdd(
             data_documento: doc.issued_at
               ? new Date(doc.issued_at).toLocaleDateString('pt-BR')
               : new Date().toLocaleDateString('pt-BR'),
+            provedor_ipef: doc.institution_provider || 'IPEF Credenciada ANTT',
+            perfil_transportador:
+              profileLabels[doc.carrier_profile] || doc.carrier_profile || 'TAC-Equiparado',
+            valor_frete: doc.freight_value
+              ? `R$ ${Number(doc.freight_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : 'Conforme contrato',
           }
 
           const emailSubject = tmpl

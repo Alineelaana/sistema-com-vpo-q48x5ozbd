@@ -90,7 +90,8 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   realFeatures: [
     'PRIORIDADE 4: Gestão do Agente de Envio Automático de Documentos aos Destinatários (ativação/pausa, intervalo cron e limite de tentativas)',
     'PRIORIDADE 4: Cadastro de Destinatários de Documentos por cliente/operação com papéis, e-mails (direto e CC) e tipos de documento autorizados (CT-e, MDF-e, CIOT, Seguro, VPO)',
-    'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas ({{nome_cliente}}, {{numero_documento}}, {{empresa_emissora}}, {{protocolo_autorizacao}}, etc.)',
+    'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas por documento (CT-e, MDF-e, CIOT ANTT e Averbação/Seguro com tags {{nome_cliente}}, {{numero_documento}}, {{provedor_ipef}}, {{perfil_transportador}}, {{valor_frete}}, {{viagem}}, etc.)',
+    'PRIORIDADE 4: Modelo de e-mail dedicado para CIOT Registrado (ANTT), com tags da operação de transporte, dados da IPEF credenciada e anexo do comprovante digital',
     'PRIORIDADE 4: Regra inegociável de envio seguro: apenas documentos com autorização fiscal REAL (status authorized / registered / averbada) são despachados',
     'PRIORIDADE 4: Controle anti-duplicidade estrito por chave única (document_type + document_id + email)',
     'Gestão completa de regras de e-mail (criação, edição, aprovação por administrador, rejeição e exclusão)',
@@ -114,7 +115,8 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     {
       name: 'Novo Modelo de E-mail',
       type: 'Botão com Modal',
-      purpose: 'Cria modelo com tags dinâmicas para CT-e, MDF-e ou comprovantes de seguro/CIOT.',
+      purpose:
+        'Cria ou edita modelo com tags dinâmicas para CT-e, MDF-e, CIOT (ANTT), Averbação de Seguro ou Dossiê.',
     },
     {
       name: 'Salvar Critérios de Carga',
@@ -512,15 +514,31 @@ export const EmailAgentTrainingPage: React.FC = () => {
   }
 
   // Modelos de Mensagem (Templates)
-  const handleOpenCreateTemplate = () => {
+  const handleOpenCreateTemplate = (preferredDocType?: DocumentType) => {
     setEditingTemplate(null)
-    setTmplName('')
-    setTmplDocType('cte')
-    setTmplSubject('{{empresa_emissora}} - {{tipo_documento}} nº {{numero_documento}} Autorizado')
-    setTmplBody(
-      `Prezado(a) {{nome_cliente}},\n\nInformamos que o {{tipo_documento}} nº {{numero_documento}} foi autorizado pela SEFAZ sob o protocolo {{protocolo_autorizacao}}.\n\nAtenciosamente,\n{{empresa_emissora}}`,
-    )
-    setTmplDesc('')
+    const targetType = preferredDocType || 'cte'
+    setTmplDocType(targetType)
+
+    if (targetType === 'ciot') {
+      setTmplName('Modelo Específico - CIOT Registrado (ANTT)')
+      setTmplSubject(
+        '{{empresa_emissora}} - Comprovante CIOT nº {{numero_documento}} Registrado (Viagem {{viagem}})',
+      )
+      setTmplBody(
+        `Prezado(a) {{nome_cliente}},\n\nInformamos que o Código Identificador da Operação de Transportes (CIOT) nº {{numero_documento}} foi devidamente registrado perante a ANTT sob o protocolo/comprovante {{protocolo_autorizacao}}.\n\nDados da Operação:\n- CIOT Nº: {{numero_documento}}\n- IPEF / Administradora: {{provedor_ipef}}\n- Perfil do Transportador: {{perfil_transportador}}\n- Valor do Frete Destacado: {{valor_frete}}\n- Percurso: Viagem {{viagem}}\n- Data de Registro: {{data_documento}}\n\nO comprovante oficial emitido pela IPEF segue em anexo para compliance fiscal (Resolução ANTT nº 5.862/2019).\n\nAtenciosamente,\nDepartamento Fiscal • {{empresa_emissora}}`,
+      )
+      setTmplDesc(
+        'Modelo dedicado para envio automático de comprovante de CIOT aos destinatários e motoristas.',
+      )
+    } else {
+      setTmplName('')
+      setTmplSubject('{{empresa_emissora}} - {{tipo_documento}} nº {{numero_documento}} Autorizado')
+      setTmplBody(
+        `Prezado(a) {{nome_cliente}},\n\nInformamos que o {{tipo_documento}} nº {{numero_documento}} foi autorizado pela SEFAZ sob o protocolo {{protocolo_autorizacao}}.\n\nAtenciosamente,\n{{empresa_emissora}}`,
+      )
+      setTmplDesc('')
+    }
+
     setTmplIsDefault(false)
     setTemplateModalOpen(true)
   }
@@ -1029,73 +1047,105 @@ export const EmailAgentTrainingPage: React.FC = () => {
               </CardDescription>
             </div>
 
-            <Button
-              size="sm"
-              onClick={handleOpenCreateTemplate}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              Novo Modelo de E-mail
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleOpenCreateTemplate('ciot')}
+                className="text-xs font-semibold border-indigo-200 text-indigo-700 hover:bg-indigo-50 gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5 text-indigo-600" />
+                Criar Modelo CIOT
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleOpenCreateTemplate()}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                Novo Modelo de E-mail
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {templates.map((tmpl) => (
-              <div
-                key={tmpl.id}
-                className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between space-y-3"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge className="bg-indigo-50 text-indigo-800 border-indigo-200 text-[10px] uppercase font-mono">
-                      Tipo: {tmpl.document_type}
-                    </Badge>
-                    {tmpl.is_default && (
-                      <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px]">
-                        Padrão
-                      </Badge>
-                    )}
-                  </div>
-                  <h3 className="font-bold text-sm text-slate-900 mt-2">{tmpl.name}</h3>
-                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                    {tmpl.description || 'Sem descrição'}
-                  </p>
+            {templates.map((tmpl) => {
+              const isCiot = tmpl.document_type === 'ciot'
+              const docTypeLabel =
+                tmpl.document_type === 'cte'
+                  ? 'CT-e'
+                  : tmpl.document_type === 'mdfe'
+                    ? 'MDF-e'
+                    : tmpl.document_type === 'ciot'
+                      ? 'CIOT (ANTT)'
+                      : tmpl.document_type === 'insurance'
+                        ? 'Seguro / Averbação'
+                        : tmpl.document_type === 'vpo'
+                          ? 'Vale Pedágio (VPO)'
+                          : 'Dossiê Fiscal'
 
-                  <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-[11px] font-mono text-slate-700">
-                    <span className="text-[10px] text-slate-400 block uppercase font-bold">
-                      Assunto:
-                    </span>
-                    <span className="truncate block font-semibold">{tmpl.subject_template}</span>
-                  </div>
-                </div>
+              return (
+                <div
+                  key={tmpl.id}
+                  className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between space-y-3 ${
+                    isCiot ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-slate-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Badge className="bg-indigo-50 text-indigo-800 border-indigo-200 text-[10px] uppercase font-mono">
+                          Tipo: {tmpl.document_type}
+                        </Badge>
+                        <span className="text-[10px] font-bold text-slate-600">{docTypeLabel}</span>
+                      </div>
+                      {tmpl.is_default && (
+                        <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px]">
+                          Padrão
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="font-bold text-sm text-slate-900 mt-2">{tmpl.name}</h3>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                      {tmpl.description || 'Sem descrição'}
+                    </p>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                  <span className="text-[10px] text-slate-400">Variáveis dinâmicas ativas</span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenEditTemplate(tmpl)}
-                      className="h-7 text-xs px-2.5 gap-1"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                      Editar
-                    </Button>
-                    {isAdmin && !tmpl.is_default && (
+                    <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-[11px] font-mono text-slate-700">
+                      <span className="text-[10px] text-slate-400 block uppercase font-bold">
+                        Assunto:
+                      </span>
+                      <span className="truncate block font-semibold">{tmpl.subject_template}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <span className="text-[10px] text-slate-400">Variáveis dinâmicas ativas</span>
+                    <div className="flex items-center gap-1">
                       <Button
                         size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteTemplate(tmpl.id)}
-                        className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
+                        variant="outline"
+                        onClick={() => handleOpenEditTemplate(tmpl)}
+                        className="h-7 text-xs px-2.5 gap-1"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Edit2 className="h-3 w-3" />
+                        Editar
                       </Button>
-                    )}
+                      {isAdmin && !tmpl.is_default && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteTemplate(tmpl.id)}
+                          className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
@@ -1127,7 +1177,22 @@ export const EmailAgentTrainingPage: React.FC = () => {
               <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
                 {'{{data_documento}}'}
               </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-300 text-indigo-800 font-bold">
+                {'{{provedor_ipef}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-300 text-indigo-800 font-bold">
+                {'{{perfil_transportador}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-indigo-300 text-indigo-800 font-bold">
+                {'{{valor_frete}}'}
+              </code>
             </div>
+            <p className="text-[10px] text-slate-500 pt-1">
+              * Para modelos de CIOT, utilize <code>{'{{numero_documento}}'}</code> para o código
+              CIOT oficial, <code>{'{{protocolo_autorizacao}}'}</code> para o protocolo do
+              comprovante IPEF, além de <code>{'{{provedor_ipef}}'}</code>,{' '}
+              <code>{'{{perfil_transportador}}'}</code> e <code>{'{{valor_frete}}'}</code>.
+            </p>
           </div>
         </CardContent>
       </Card>
