@@ -669,6 +669,71 @@ export const EmailAgentTrainingPage: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* REGRAS DE REGULARIZAÇÃO FISCAL & SALVAGUARDAS (NOVO: ETAPA 3) */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                <span>Diretrizes e Salvaguardas da Etapa 3 (Regularização Fiscal)</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Parâmetros legais e bloqueios operacionais automáticos do agente fiscal
+              </CardDescription>
+            </div>
+            <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 text-xs">
+              Prioridade 3 Ativa
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide">
+                <Receipt className="h-4 w-4 text-indigo-600" />
+                Bloqueio por CIOT Ausente
+              </div>
+              <p className="text-xs text-slate-600">
+                Se ativado na tela Empresa, o agente bloqueia a liberação e emissão de viagens para
+                perfis TAC-Equiparado até o registro formal do CIOT ou comprovante da IPEF.
+              </p>
+              <div className="text-[10px] text-indigo-700 font-semibold font-mono">
+                Resolução ANTT nº 5.862/2019
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide">
+                <ShieldAlert className="h-4 w-4 text-rose-600" />
+                Bloqueio por Averbação RCTR-C
+              </div>
+              <p className="text-xs text-slate-600">
+                O agente gera o dossiê de seguro e retém a expedição se a apólice não estiver ativa
+                ou o protocolo de averbação da seguradora/AT&M não for informado.
+              </p>
+              <div className="text-[10px] text-rose-700 font-semibold font-mono">
+                Lei nº 14.599/2023
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide">
+                <Layers className="h-4 w-4 text-emerald-600" />
+                Emissão Automática de MDF-e
+              </div>
+              <p className="text-xs text-slate-600">
+                Após autorização oficial dos CT-es pela SEFAZ, o agente consolida as cargas, calcula
+                peso e valor total e monta o rascunho de MDF-e interestadual.
+              </p>
+              <div className="text-[10px] text-emerald-700 font-semibold font-mono">
+                Ajuste SINIEF 21/2010
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* REGRAS DE E-MAIL APROVADAS */}
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3 border-b border-slate-200/80">

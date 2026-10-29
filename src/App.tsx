@@ -12,6 +12,9 @@ import { LoginPage } from './pages/LoginPage'
 import { VpoPage } from './pages/VpoPage'
 import { TripsPage } from './pages/TripsPage'
 import { CtePage } from './pages/CtePage'
+import { MdfePage } from './pages/MdfePage'
+import { CiotPage } from './pages/CiotPage'
+import { InsurancePage } from './pages/InsurancePage'
 import { VehiclesPage } from './pages/VehiclesPage'
 import { DriversPage } from './pages/DriversPage'
 import { CompanyPage } from './pages/CompanyPage'
@@ -73,9 +76,12 @@ const App = () => (
                 <Route path="/trips" element={<TripsPage />} />
               </Route>
 
-              {/* Módulo CT-e */}
+              {/* Módulo CT-e, MDF-e, CIOT e Seguros */}
               <Route element={<ProtectedRoute requiredModule="cte" />}>
                 <Route path="/cte" element={<CtePage />} />
+                <Route path="/mdfe" element={<MdfePage />} />
+                <Route path="/ciot" element={<CiotPage />} />
+                <Route path="/seguros" element={<InsurancePage />} />
               </Route>
 
               {/* Módulo Veículos */}

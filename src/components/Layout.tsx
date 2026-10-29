@@ -32,6 +32,9 @@ import {
   FolderDot,
   Bot,
   GraduationCap,
+  Receipt,
+  Layers,
+  ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -128,13 +131,13 @@ const NAV_SECTIONS: NavSectionDef[] = [
     icon: FileCheck2,
     items: [
       {
-        id: 'vpo_calc',
-        label: 'Cálculo VPO',
-        to: '/vpo-calc',
-        icon: Calculator,
-        highlight: true,
-        module: 'vpo_calc',
-        keywords: ['pedágio', 'vale pedágio', 'antt', 'eixos', 'tarifa', 'roteirizador'],
+        id: 'ciot',
+        label: 'CIOT (ANTT)',
+        to: '/ciot',
+        icon: Receipt,
+        badge: 'Obrigatório',
+        module: 'cte',
+        keywords: ['ciot', 'antt', 'ipef', 'rntrc', 'tac', 'equiparado', 'protocolo'],
       },
       {
         id: 'cte',
@@ -143,6 +146,32 @@ const NAV_SECTIONS: NavSectionDef[] = [
         icon: FileText,
         module: 'cte',
         keywords: ['conhecimento', 'xml', 'sefaz', 'dacte', 'fiscal', 'emissão'],
+      },
+      {
+        id: 'mdfe',
+        label: 'MDF-e (Manifesto)',
+        to: '/mdfe',
+        icon: Layers,
+        module: 'cte',
+        keywords: ['mdfe', 'manifesto', 'carga', 'damdfe', 'sefaz', 'encerramento'],
+      },
+      {
+        id: 'insurance',
+        label: 'Seguros & Averbação',
+        to: '/seguros',
+        icon: ShieldAlert,
+        badge: 'RCTR-C',
+        module: 'cte',
+        keywords: ['seguro', 'averbação', 'apólice', 'rctr-c', 'rc-dc', 'porto', 'atm'],
+      },
+      {
+        id: 'vpo_calc',
+        label: 'Vale-Pedágio (VPO)',
+        to: '/vpo-calc',
+        icon: Calculator,
+        highlight: true,
+        module: 'vpo_calc',
+        keywords: ['pedágio', 'vale pedágio', 'antt', 'eixos', 'tarifa', 'roteirizador'],
       },
     ],
   },

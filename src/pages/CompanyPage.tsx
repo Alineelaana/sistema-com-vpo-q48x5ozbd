@@ -374,28 +374,74 @@ export const CompanyPage: React.FC = () => {
               <CardDescription>Ambiente de emissão e numeração sequencial</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-3 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                <p className="font-semibold">Regra de Integridade SEFAZ:</p>
+                <p>
+                  Nenhum documento é simulado como autorizado. Sem credenciais válidas, as emissões
+                  de CT-e e MDF-e permanecem na fila com status honesto (aguardando transmissão).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Provedor Fiscal Plugável</Label>
+                  <Select
+                    value={company.fiscal_provider || 'nuvemfiscal'}
+                    onValueChange={(val: 'nuvemfiscal' | 'focusnfe' | 'tecnospeed' | 'none') =>
+                      setCompany({ ...company, fiscal_provider: val })
+                    }
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nuvemfiscal">Nuvem Fiscal (Homologado / SEFAZ)</SelectItem>
+                      <SelectItem value="focusnfe">Focus NFe (Interface preparada)</SelectItem>
+                      <SelectItem value="tecnospeed">
+                        TecnoSpeed PlugNotas (Interface preparada)
+                      </SelectItem>
+                      <SelectItem value="none">Desativado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Ambiente SEFAZ</Label>
+                  <Select
+                    value={company.sefaz_environment || 'homologation'}
+                    onValueChange={(val: 'homologation' | 'production') =>
+                      setCompany({ ...company, sefaz_environment: val })
+                    }
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="homologation">
+                        Homologação (Ambiente de Testes / Validação)
+                      </SelectItem>
+                      <SelectItem value="production">
+                        Produção (Validade Jurídica e Fiscal Real)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div>
-                <Label>Ambiente de Emissão SEFAZ</Label>
-                <Select
-                  value={company.sefaz_environment || 'homologation'}
-                  onValueChange={(val: 'homologation' | 'production') =>
-                    setCompany({ ...company, sefaz_environment: val })
-                  }
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="homologation">
-                      Homologação (Ambiente de Testes / Validação)
-                    </SelectItem>
-                    <SelectItem value="production">
-                      Produção (Validade Jurídica e Fiscal Real)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="fiscal_api_token">
+                  Token da API Fiscal (Bearer / Nuvem Fiscal)
+                </Label>
+                <Input
+                  id="fiscal_api_token"
+                  type="password"
+                  placeholder="Token do provedor fiscal cadastrado..."
+                  value={company.fiscal_api_token || ''}
+                  onChange={(e) => setCompany({ ...company, fiscal_api_token: e.target.value })}
+                  className="mt-1"
+                />
                 <span className="text-[11px] text-slate-500">
-                  Na v1 operacional, as emissões geram o layout XML homologado para integração.
+                  Credencial armazenada unicamente no backend seguro para chamadas de transmissão.
                 </span>
               </div>
 
@@ -431,9 +477,60 @@ export const CompanyPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs text-blue-900">
-                <strong>Próximos passos (Roadmap):</strong> Conexão direta com webservice SEFAZ
-                estadual e provedor de vale pedágio homologado ANTT (Repom/SemParar).
+              {/* VPO & CIOT */}
+              <div className="pt-2 border-t space-y-3">
+                <Label className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                  Integrações de Vale-Pedágio (FVPO) & Salvaguardas
+                </Label>
+                <div>
+                  <Label>Fornecedora de Vale-Pedágio Obrigatório (FVPO)</Label>
+                  <Select
+                    value={company.fvpo_provider || 'semparar'}
+                    onValueChange={(
+                      val: 'semparar' | 'repom' | 'conectcar' | 'veloe' | 'movemais' | 'none',
+                    ) => setCompany({ ...company, fvpo_provider: val })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="semparar">Sem Parar Empresas</SelectItem>
+                      <SelectItem value="repom">Repom / Edenred Soluções</SelectItem>
+                      <SelectItem value="conectcar">ConectCar Frotas</SelectItem>
+                      <SelectItem value="veloe">Veloe Go</SelectItem>
+                      <SelectItem value="movemais">Move Mais</SelectItem>
+                      <SelectItem value="none">Manual / Sem API ativa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="ciot_enabled"
+                    checked={company.ciot_enabled ?? true}
+                    onChange={(e) => setCompany({ ...company, ciot_enabled: e.target.checked })}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <Label htmlFor="ciot_enabled" className="text-xs cursor-pointer">
+                    Ativar salvaguarda obrigatória de CIOT (Resolução ANTT 5.862/2019)
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="insurance_blocking_enabled"
+                    checked={company.insurance_blocking_enabled ?? true}
+                    onChange={(e) =>
+                      setCompany({ ...company, insurance_blocking_enabled: e.target.checked })
+                    }
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <Label htmlFor="insurance_blocking_enabled" className="text-xs cursor-pointer">
+                    Bloquear avanço se houver falta de apólice de seguro (Lei 14.599/2023)
+                  </Label>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -16,6 +16,13 @@ export interface CompanySettings {
   sefaz_environment?: 'homologation' | 'production'
   cte_series?: number
   cte_current_number?: number
+  fiscal_provider?: 'nuvemfiscal' | 'focusnfe' | 'tecnospeed' | 'none'
+  fiscal_api_token?: string
+  fiscal_client_id?: string
+  fiscal_client_secret?: string
+  fvpo_provider?: 'semparar' | 'repom' | 'conectcar' | 'veloe' | 'movemais' | 'none'
+  ciot_enabled?: boolean
+  insurance_blocking_enabled?: boolean
   created?: string
   updated?: string
 }
@@ -113,12 +120,129 @@ export interface CteDocument {
   status: 'draft' | 'pending' | 'authorized' | 'rejected' | 'cancelled'
   status_message?: string
   protocol?: string
+  xml_content?: string
   issued_at?: string
   expand?: {
     trip_id?: Trip
   }
   created?: string
   updated?: string
+}
+
+export interface MdfeDocument {
+  id: string
+  mdfe_number: number
+  series: number
+  status: 'draft' | 'queued' | 'pending' | 'authorized' | 'rejected' | 'closed' | 'cancelled'
+  access_key?: string
+  protocol?: string
+  status_message?: string
+  xml_content?: string
+  uf_origin: string
+  uf_destination: string
+  route_ufs: string
+  trip_id?: string
+  vehicle_id?: string
+  driver_id?: string
+  linked_cte_numbers?: string
+  linked_cte_keys?: string
+  total_cargo_value?: number
+  total_weight_kg?: number
+  issued_at?: string
+  closed_at?: string
+  cancelled_at?: string
+  created?: string
+  updated?: string
+  expand?: {
+    trip_id?: Trip
+    vehicle_id?: Vehicle
+    driver_id?: Driver
+  }
+}
+
+export type CarrierProfile = 'etc' | 'tac_equiparado' | 'tac_independente' | 'ctc'
+
+export interface CiotRecord {
+  id: string
+  trip_id: string
+  trip_code?: string
+  carrier_rntrc: string
+  carrier_profile: CarrierProfile
+  ciot_number?: string
+  institution_provider?: string
+  status: 'pending' | 'registering' | 'registered' | 'failed' | 'cancelled'
+  voucher_document?: string
+  is_mandatory: boolean
+  contractor_document?: string
+  freight_value?: number
+  registered_at?: string
+  status_message?: string
+  notes?: string
+  created?: string
+  updated?: string
+  expand?: {
+    trip_id?: Trip
+  }
+}
+
+export type InsuranceType = 'rctr_c' | 'rc_dc' | 'rcta_c' | 'rctrc_estipulado' | 'outro'
+
+export interface InsurancePolicy {
+  id: string
+  insurer_name: string
+  insurer_cnpj?: string
+  policy_number: string
+  insurance_type: InsuranceType
+  start_date: string
+  end_date: string
+  insured_cnpjs?: string
+  broker_name?: string
+  atm_provider?: string
+  is_mandatory_all_trips: boolean
+  is_active: boolean
+  notes?: string
+  created?: string
+  updated?: string
+}
+
+export interface InsuranceEndorsement {
+  id: string
+  trip_id: string
+  cte_id?: string
+  policy_id: string
+  endorsement_protocol?: string
+  status: 'pending' | 'queued' | 'averbada' | 'falhou' | 'dispensada'
+  declared_cargo_value: number
+  fiscal_key?: string
+  carrier_document?: string
+  status_message?: string
+  proof_document?: string
+  averbada_at?: string
+  is_mandatory: boolean
+  created?: string
+  updated?: string
+  expand?: {
+    trip_id?: Trip
+    policy_id?: InsurancePolicy
+    cte_id?: CteDocument
+  }
+}
+
+export interface RegularizationOrchestrationResult {
+  success: boolean
+  processed_trips: number
+  ctes_checked: number
+  ciots_checked: number
+  endorsements_checked: number
+  mdfes_checked: number
+  pending_issues: Array<{
+    trip_code: string
+    stage: string
+    severity: 'bloqueio' | 'aviso'
+    message: string
+  }>
+  fiscal_provider_status: 'configurado' | 'aguardando_credenciais'
+  message: string
 }
 
 export type InfractionType =

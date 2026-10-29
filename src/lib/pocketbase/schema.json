@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T01:56:25.836Z",
+  "generatedAt": "2026-10-29T02:00:56.419Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "phone",
@@ -60,24 +55,14 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "admin",
-            "manager",
-            "financial",
-            "operator",
-            "readonly"
-          ]
+          "selectValues": ["admin", "manager", "financial", "operator", "readonly"]
         },
         {
           "name": "status",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "active",
-            "inactive",
-            "anonymized"
-          ]
+          "selectValues": ["active", "inactive", "anonymized"]
         },
         {
           "name": "privacy_consent_date",
@@ -230,21 +215,14 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "configured",
-            "missing",
-            "expired"
-          ]
+          "selectValues": ["configured", "missing", "expired"]
         },
         {
           "name": "sefaz_environment",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "homologation",
-            "production"
-          ]
+          "selectValues": ["homologation", "production"]
         },
         {
           "name": "cte_series",
@@ -263,24 +241,61 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "fiscal_provider",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["nuvemfiscal", "focusnfe", "tecnospeed", "none"]
+        },
+        {
+          "name": "fiscal_api_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_client_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_client_secret",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fvpo_provider",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["semparar", "repom", "conectcar", "veloe", "movemais", "none"]
+        },
+        {
+          "name": "ciot_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_blocking_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_company_cnpj ON company_settings (cnpj)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_company_cnpj ON company_settings (cnpj)"]
     },
     {
       "name": "vehicles",
@@ -322,14 +337,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "truck",
-            "semi_trailer",
-            "bitrem",
-            "rodotrem",
-            "vuc",
-            "toco"
-          ]
+          "selectValues": ["truck", "semi_trailer", "bitrem", "rodotrem", "vuc", "toco"]
         },
         {
           "name": "tare_weight_kg",
@@ -354,35 +362,24 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "active",
-            "maintenance",
-            "inactive"
-          ]
+          "selectValues": ["active", "maintenance", "inactive"]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_vehicles_plate ON vehicles (plate)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_vehicles_plate ON vehicles (plate)"]
     },
     {
       "name": "drivers",
@@ -418,11 +415,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "C",
-            "D",
-            "E"
-          ]
+          "selectValues": ["C", "D", "E"]
         },
         {
           "name": "phone",
@@ -435,36 +428,24 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "available",
-            "on_trip",
-            "vacation",
-            "inactive"
-          ]
+          "selectValues": ["available", "on_trip", "vacation", "inactive"]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_drivers_cpf ON drivers (cpf)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_drivers_cpf ON drivers (cpf)"]
     },
     {
       "name": "trips",
@@ -574,11 +555,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "embarcador",
-            "transportador",
-            "destinatario"
-          ]
+          "selectValues": ["embarcador", "transportador", "destinatario"]
         },
         {
           "name": "vpo_voucher_number",
@@ -591,36 +568,24 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "planned",
-            "in_progress",
-            "completed",
-            "cancelled"
-          ]
+          "selectValues": ["planned", "in_progress", "completed", "cancelled"]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_trips_code ON trips (trip_code)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_trips_code ON trips (trip_code)"]
     },
     {
       "name": "cte_documents",
@@ -717,13 +682,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "draft",
-            "pending",
-            "authorized",
-            "rejected",
-            "cancelled"
-          ]
+          "selectValues": ["draft", "pending", "authorized", "rejected", "cancelled"]
         },
         {
           "name": "status_message",
@@ -748,24 +707,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_cte_number ON cte_documents (cte_number, series)"
-      ]
+      "indexes": ["CREATE INDEX idx_cte_number ON cte_documents (cte_number, series)"]
     },
     {
       "name": "traffic_fines",
@@ -832,12 +784,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "light",
-            "medium",
-            "grave",
-            "very_grave"
-          ]
+          "selectValues": ["light", "medium", "grave", "very_grave"]
         },
         {
           "name": "points",
@@ -874,12 +821,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "pending",
-            "paid",
-            "appealed",
-            "cancelled"
-          ]
+          "selectValues": ["pending", "paid", "appealed", "cancelled"]
         },
         {
           "name": "payment_date",
@@ -904,19 +846,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -948,10 +885,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "due_soon",
-            "overdue"
-          ]
+          "selectValues": ["due_soon", "overdue"]
         },
         {
           "name": "title",
@@ -988,19 +922,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1025,10 +954,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "delivery",
-            "pickup"
-          ]
+          "selectValues": ["delivery", "pickup"]
         },
         {
           "name": "customer_name",
@@ -1149,13 +1075,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "scheduled",
-            "in_transit",
-            "delivered",
-            "incident",
-            "cancelled"
-          ]
+          "selectValues": ["scheduled", "in_transit", "delivered", "incident", "cancelled"]
         },
         {
           "name": "sequence_order",
@@ -1243,11 +1163,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "pending",
-            "ok",
-            "divergent"
-          ]
+          "selectValues": ["pending", "ok", "divergent"]
         },
         {
           "name": "audit_notes",
@@ -1260,19 +1176,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1352,24 +1263,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_incidents_delivery ON delivery_incidents (delivery_id)"
-      ]
+      "indexes": ["CREATE INDEX idx_incidents_delivery ON delivery_incidents (delivery_id)"]
     },
     {
       "name": "audit_logs",
@@ -1471,19 +1375,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1527,11 +1426,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "active",
-            "paused",
-            "error"
-          ]
+          "selectValues": ["active", "paused", "error"]
         },
         {
           "name": "last_run_at",
@@ -1592,24 +1487,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_email_agent_status ON email_agent_configs (status)"
-      ]
+      "indexes": ["CREATE INDEX idx_email_agent_status ON email_agent_configs (status)"]
     },
     {
       "name": "email_agent_rules",
@@ -1639,12 +1527,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "nfe_received",
-            "cte_request",
-            "complementary_doc",
-            "unknown"
-          ]
+          "selectValues": ["nfe_received", "cte_request", "complementary_doc", "unknown"]
         },
         {
           "name": "subject_keywords",
@@ -1669,12 +1552,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "start_process",
-            "identify_cargo",
-            "link_operation",
-            "send_for_analysis"
-          ]
+          "selectValues": ["start_process", "identify_cargo", "link_operation", "send_for_analysis"]
         },
         {
           "name": "action_target_process",
@@ -1687,11 +1565,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "pending_approval",
-            "approved",
-            "rejected"
-          ]
+          "selectValues": ["pending_approval", "approved", "rejected"]
         },
         {
           "name": "approved_by",
@@ -1728,19 +1602,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1771,11 +1640,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "gmail",
-            "outlook",
-            "manual"
-          ]
+          "selectValues": ["gmail", "outlook", "manual"]
         },
         {
           "name": "sender",
@@ -1824,12 +1689,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "nfe_received",
-            "cte_request",
-            "complementary_doc",
-            "unknown"
-          ]
+          "selectValues": ["nfe_received", "cte_request", "complementary_doc", "unknown"]
         },
         {
           "name": "matched_rule_id",
@@ -1872,12 +1732,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "processed",
-            "duplicate",
-            "needs_analysis",
-            "error"
-          ]
+          "selectValues": ["processed", "duplicate", "needs_analysis", "error"]
         },
         {
           "name": "execution_result",
@@ -1914,19 +1769,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -2054,19 +1904,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -2221,19 +2066,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -2346,25 +2186,514 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
         "CREATE INDEX idx_cargo_ident_status ON cargo_identifications (match_status)",
         "CREATE INDEX idx_cargo_ident_trip ON cargo_identifications (trip_id)",
         "CREATE INDEX idx_cargo_ident_doc ON cargo_identifications (fiscal_document_id)"
+      ]
+    },
+    {
+      "name": "mdfe_documents",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "mdfe_number",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "series",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "draft",
+            "queued",
+            "pending",
+            "authorized",
+            "rejected",
+            "closed",
+            "cancelled"
+          ]
+        },
+        {
+          "name": "access_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "xml_content",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uf_origin",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uf_destination",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "route_ufs",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "trips"
+        },
+        {
+          "name": "vehicle_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "vehicles"
+        },
+        {
+          "name": "driver_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "drivers"
+        },
+        {
+          "name": "linked_cte_numbers",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "linked_cte_keys",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_cargo_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_weight_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "issued_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cancelled_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mdfe_status ON mdfe_documents (status)",
+        "CREATE INDEX idx_mdfe_trip ON mdfe_documents (trip_id)",
+        "CREATE INDEX idx_mdfe_number ON mdfe_documents (mdfe_number)"
+      ]
+    },
+    {
+      "name": "ciot_records",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "trip_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trips"
+        },
+        {
+          "name": "trip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_rntrc",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "carrier_profile",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["etc", "tac_equiparado", "tac_independente", "ctc"]
+        },
+        {
+          "name": "ciot_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "institution_provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pending", "registering", "registered", "failed", "cancelled"]
+        },
+        {
+          "name": "voucher_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_mandatory",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contractor_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "freight_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "registered_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ciot_trip ON ciot_records (trip_id)",
+        "CREATE INDEX idx_ciot_status ON ciot_records (status)",
+        "CREATE INDEX idx_ciot_number ON ciot_records (ciot_number)"
+      ]
+    },
+    {
+      "name": "insurance_policies",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "insurer_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "insurer_cnpj",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "policy_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "insurance_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["rctr_c", "rc_dc", "rcta_c", "rctrc_estipulado", "outro"]
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "insured_cnpjs",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "broker_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "atm_provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_mandatory_all_trips",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_insurance_active ON insurance_policies (is_active)",
+        "CREATE INDEX idx_insurance_policy ON insurance_policies (policy_number)"
+      ]
+    },
+    {
+      "name": "insurance_endorsements",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "trip_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trips"
+        },
+        {
+          "name": "cte_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "cte_documents"
+        },
+        {
+          "name": "policy_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "insurance_policies"
+        },
+        {
+          "name": "endorsement_protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pending", "queued", "averbada", "falhou", "dispensada"]
+        },
+        {
+          "name": "declared_cargo_value",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "fiscal_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "proof_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "averbada_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_mandatory",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_endorsement_trip ON insurance_endorsements (trip_id)",
+        "CREATE INDEX idx_endorsement_status ON insurance_endorsements (status)"
       ]
     }
   ]

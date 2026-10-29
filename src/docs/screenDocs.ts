@@ -270,52 +270,198 @@ export const CTE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Documentos Fiscais (CT-e)',
   screenBadge: 'Fiscal • Conhecimento de Frete',
   lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  version: '2.0.0',
   objective:
-    'Gerenciamento e emissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) com destaque obrigatório de Vale Pedágio (Lei 10.209/01). Mantém a prevenção de duplicidade fiscal integrada aos agentes.',
+    'Gerenciamento e emissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) via Provedor Fiscal Certificado (Nuvem Fiscal real). Transmissão sem qualquer simulação: documentos permanecem na fila enquanto aguardam resposta oficial da SEFAZ.',
   realFeatures: [
-    'Listagem de CT-es autorizados, rejeitados e em digitação com chave de 44 dígitos',
-    'Destaque transparente das parcelas de frete, ICMS e valor de pedágio pago pelo tomador',
-    'Associação com a viagem operacional e NF-e do cliente',
-    'Prevenção contra duplicidade fiscal consultada pelo Agente de Cargas antes de vincular novas cargas',
+    'Transmissão para a SEFAZ através da API oficial Nuvem Fiscal (provedores Focus NFe e TecnoSpeed com interfaces preparadas)',
+    'Destaque obrigatório e legal do Vale Pedágio Obrigatório (VPO)',
+    'Tratamento honesto de status: Em Fila, Pendente SEFAZ, Autorizado e Rejeitado com mensagem do motivo oficial',
+    'DACTE demonstrativo com protocolo e chave de acesso oficial',
+    'Salvaguarda: documentos já autorizados são bloqueados contra retransmissão indevida',
   ],
   fieldsAndButtons: [
     {
-      name: 'Emitir Novo CT-e',
-      type: 'Botão de Ação',
-      purpose: 'Abre formulário de minuta fiscal.',
+      name: 'Transmitir à SEFAZ',
+      type: 'Botão de Ação Fiscal',
+      purpose: 'Envia o CT-e à SEFAZ através do backend hook com credenciais seguras.',
     },
     {
       name: 'Visualizar DACTE',
       type: 'Ação na Linha',
-      purpose: 'Visualização dos dados fiscais do conhecimento.',
+      purpose: 'Visualização dos dados fiscais do conhecimento com destaque de VPO.',
     },
     {
-      name: 'Chave de Acesso',
-      type: 'Chave 44 dígitos',
-      purpose: 'Identificador fiscal único registrado na SEFAZ.',
+      name: 'Lógica da Tela',
+      type: 'Botão de Auditoria',
+      purpose:
+        'Documenta o que está integrado de forma real e o que depende de credenciais de provedor.',
     },
   ],
   businessRules: [
-    'Regra Permanente: Nunca simular autorização fiscal com falsos protocolos SEFAZ.',
-    'O valor do Vale Pedágio Obrigatório NÃO integra a base de cálculo do ICMS de transporte.',
-    'Chave fiscal já existente nesta coleção bloqueia qualquer reemissão pelo Agente de Cargas.',
+    'Regra Inegociável: NUNCA simular autorização fiscal. Sem credenciais cadastradas na tela Empresa, o CT-e permanece na fila como aguardando transmissão.',
+    'CIOT e VPO são obrigações distintas e segregadas.',
+    'CT-e autorizado perante a SEFAZ nunca pode ser retransmitido.',
   ],
   agentsAndAutomations: [
-    'Agente de Cargas consulta esta coleção para prevenir duplicidade e bitributação.',
+    'Orquestrador da Etapa 3 processa viagens da Etapa 2 gerando CT-es na fila para emissão.',
   ],
-  validations: ['Validação da chave de acesso, CNPJ do remetente e destinatário e valor do frete.'],
-  integrations: ['Coleção cte_documents, trips e received_fiscal_documents.'],
+  validations: ['Validação de remetente, destinatário, valor da carga, frete e ambiente da SEFAZ.'],
+  integrations: ['Coleções cte_documents, trips, company_settings e Nuvem Fiscal API.'],
   flowsAndDependencies: [
-    'A etapa 3 da Central de Agentes encaminhará cargas identificadas para emissão aqui.',
+    'CT-es autorizados alimentam a montagem e transmissão de MDF-e na etapa subsequente.',
   ],
   dataSourceAndDestination: {
-    origin: 'Emissão fiscal e retornos autorizados.',
-    destination: 'Coleção cte_documents.',
+    origin: 'Viagens operacionais e dados fiscais de embarcadores.',
+    destination: 'Coleção cte_documents e SEFAZ.',
     persistence: 'Banco SQLite via PocketBase.',
   },
-  permissions: [{ role: 'Fiscal e Admin', access: 'Emissão e consulta de conhecimentos.' }],
-  notificationsAndErrors: ['Avisos de duplicidade de chave ou campos fiscais faltantes.'],
+  permissions: [{ role: 'Fiscal e Admin', access: 'Emissão e transmissão de conhecimentos.' }],
+  notificationsAndErrors: ['Rejeições da SEFAZ com código e motivo legível para saneamento.'],
+}
+
+export const MDFE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Manifesto Eletrônico de Documentos Fiscais (MDF-e)',
+  screenBadge: 'Fiscal & VPO • Modelo 58',
+  lastUpdate: '2026-10-29',
+  version: '1.0.0',
+  objective:
+    'Consolidação de cargas e manifesto de documentos fiscais eletrônicos (modelo 58) para transporte interestadual, agrupando exclusivamente CT-es autorizados.',
+  realFeatures: [
+    'Consolidação automática dos CT-es autorizados da viagem',
+    'Transmissão via Nuvem Fiscal ou enfileiramento seguro na ausência de credenciais',
+    'Definição e validação do percurso interestadual de UFs',
+    'Encerramento do manifesto no destino e cancelamento dentro dos prazos legais',
+    'Visualização simplificada de DAMDFE com protocolo e chaves vinculadas',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Novo MDF-e',
+      type: 'Botão de Ação',
+      purpose: 'Gera rascunho de manifesto a partir de uma viagem com CT-es autorizados.',
+    },
+    {
+      name: 'Transmitir à SEFAZ',
+      type: 'Ação na Linha / Modal',
+      purpose: 'Envia o manifesto para autorização junto ao provedor fiscal conectado.',
+    },
+    {
+      name: 'Encerrar Manifesto',
+      type: 'Ação Finalizadora',
+      purpose: 'Comunica o término da rota na UF de destino, liberando o veículo.',
+    },
+  ],
+  businessRules: [
+    'Só podem ser consolidados no MDF-e documentos (CT-e) com status autorizado na SEFAZ.',
+    'Nunca simular autorização fiscal: manifesto sem resposta oficial fica retido como fila/rascunho.',
+  ],
+  agentsAndAutomations: [
+    'Agente de regularização fiscal cria automaticamente o rascunho de MDF-e após CT-e pronto.',
+  ],
+  validations: ['Obrigatoriedade de UFs de origem, destino e percurso compatíveis com a rota.'],
+  integrations: ['Coleções mdfe_documents, cte_documents, trips, vehicles e drivers.'],
+  flowsAndDependencies: [
+    'Depende de CT-es autorizados para poder ser transmitido com validade jurídica.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'CT-es autorizados da viagem.',
+    destination: 'Coleção mdfe_documents e SEFAZ.',
+    persistence: 'Banco SQLite via PocketBase.',
+  },
+  permissions: [{ role: 'Fiscal e Operador', access: 'Emissão, encerramento e consulta.' }],
+  notificationsAndErrors: ['Avisos de necessidade de encerramento antes de novas viagens.'],
+}
+
+export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Código Identificador da Operação de Transportes (CIOT)',
+  screenBadge: 'Fiscal & VPO • Res. ANTT 5.862/2019',
+  lastUpdate: '2026-10-29',
+  version: '1.0.0',
+  objective:
+    'Controle da obrigatoriedade do CIOT para remuneração do frete na ANTT, com distinção estrita em relação ao VPO e perfil do transportador (ETC ou TAC-Equiparado).',
+  realFeatures: [
+    'Registro do código CIOT de 16 dígitos e comprovante oficial fornecido pela IPEF',
+    'Classificação de perfil do transportador (TAC-Equiparado, ETC, TAC-Independente)',
+    'Integração com viagens operacionais e bloqueio de expedição configurável',
+    'Salvaguarda contra promessas irreais: esclarece que não existe emissão mágica direta na ANTT sem IPEF homologada',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Registrar CIOT',
+      type: 'Botão de Formulário',
+      purpose: 'Cadastra ou atualiza o CIOT e comprovante da viagem.',
+    },
+    {
+      name: 'Editar / Comprovante',
+      type: 'Ação na Linha',
+      purpose: 'Insere o hash do protocolo gerado pela fornecedora.',
+    },
+  ],
+  businessRules: [
+    'CIOT e VPO são obrigações DISTINTAS: possuem finalidades, coleções e normativas diferentes.',
+    'Não prometer CIOT direto na ANTT sem custo: a integração exige credencial de IPEF cadastrada.',
+  ],
+  agentsAndAutomations: [
+    'Agente de regularização verifica a obrigatoriedade por viagem e gera pendência se faltar.',
+  ],
+  validations: ['Validação do RNTRC do transportador e formato do código numérico de 16 dígitos.'],
+  integrations: ['Coleções ciot_records, trips e company_settings.'],
+  flowsAndDependencies: [
+    'Pendência de CIOT pode bloquear a autorização ou liberação da viagem se ativado na Empresa.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'Viagens contratadas e retorno de IPEFs.',
+    destination: 'Coleção ciot_records.',
+    persistence: 'Banco SQLite via PocketBase.',
+  },
+  permissions: [{ role: 'Frota, Fiscal e Admin', access: 'Gestão de CIOT e compliance ANTT.' }],
+  notificationsAndErrors: ['Alertas de viagem com CIOT pendente antes do despacho.'],
+}
+
+export const INSURANCE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Seguros & Averbação de Carga',
+  screenBadge: 'Fiscal & VPO • Lei 14.599/2023',
+  lastUpdate: '2026-10-29',
+  version: '1.0.0',
+  objective:
+    'Gestão de apólices de seguro de transporte rodoviário de cargas (RCTR-C obrigatório e RC-DC facultativo) e controle dos dossiês de averbação por viagem.',
+  realFeatures: [
+    'Cadastro e controle de vigência de apólices de seguro (Porto Seguro, Tokio Marine, Sompo)',
+    'Geração de dossiê de averbação com valor declarado e chave fiscal da carga',
+    'Registro do protocolo de averbação e comprovante retornado pela seguradora ou AT&M',
+    'Bloqueio automático de despacho de viagem sem seguro ativo quando configurado na Empresa',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Novo Dossiê de Averbação',
+      type: 'Botão de Ação',
+      purpose: 'Registra o pedido de averbação da carga com a seguradora.',
+    },
+    {
+      name: 'Nova Apólice',
+      type: 'Botão de Formulário',
+      purpose: 'Cadastra nova apólice RCTR-C ou RC-DC com seguradora e corretora.',
+    },
+  ],
+  businessRules: [
+    'Lei nº 14.599/2023: o seguro RCTR-C é de contratação e averbação obrigatória do transportador.',
+    'Carga sem averbação confirmada permanece na fila com status honesto.',
+  ],
+  agentsAndAutomations: [
+    'Agente de regularização fiscal monta o dossiê de averbação para cada viagem identificada.',
+  ],
+  validations: ['Vigência ativa da apólice e valor declarado compatível com a mercadoria.'],
+  integrations: ['Coleções insurance_policies, insurance_endorsements e trips.'],
+  flowsAndDependencies: [
+    'Averbação é o primeiro elo da esteira fiscal antes da transmissão do CT-e.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'Apólices e dados de NF-e da carga.',
+    destination: 'Coleções insurance_policies e insurance_endorsements.',
+    persistence: 'Banco SQLite via PocketBase.',
+  },
+  permissions: [{ role: 'Seguros, Fiscal e Admin', access: 'Gestão de apólices e averbações.' }],
+  notificationsAndErrors: ['Avisos de viagens sem averbação ou com apólice próxima do vencimento.'],
 }
 
 export const VPO_SCREEN_LOGIC_DOC: ScreenLogicDoc = {

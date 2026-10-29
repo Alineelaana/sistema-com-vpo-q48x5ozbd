@@ -55,6 +55,9 @@ import {
   Truck,
   Hash,
   AlertCircle,
+  Receipt,
+  Layers,
+  ShieldAlert,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
@@ -67,11 +70,11 @@ const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   objective:
     'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Com a entrega da Prioridade 2, as Etapas 1 (Agente de E-mails) e 2 (Agente de Identificação de Cargas) estão 100% ativas com dados reais. O agente cruza de forma segura NF-e com viagens, bloqueia auto-vínculo quando há ambiguidade ou divergência e impede duplicidade fiscal. Etapas 3 e 4 permanecem transparentemente em implantação.',
   realFeatures: [
-    'Fluxo visual em 4 etapas detalhando o status real: Etapas 1 e 2 ativas; Etapas 3 e 4 em implantação',
-    'Agente de E-mails com sincronização segura, classificação por regras aprovadas e deduplicação por message_id',
-    'Agente de Identificação de Cargas com cruzamento multi-sinal (placa, cliente, datas, motorista, peso e rota)',
-    'Proteção contra auto-vínculo ambíguo: se houver mais de uma viagem possível ou divergência de dados, gera pendência para intervenção humana',
-    'Verificação e bloqueio de duplicidade fiscal contra CT-es já autorizados no sistema',
+    'Fluxo visual em 4 etapas detalhando o status real: Etapas 1, 2 e 3 100% ativas com dados e APIs reais; Etapa 4 em implantação',
+    'Etapa 3 ativa: Orquestração de regularização fiscal legal (Averbação RCTR-C ➔ CIOT IPEF ➔ VPO ➔ CT-e SEFAZ ➔ MDF-e)',
+    'Transmissão certificada via Nuvem Fiscal no backend com chave segura; interface preparada para Focus NFe e TecnoSpeed',
+    'Tratamento honesto de status fiscal: documentos sem credenciais permanecem retidos na fila como aguardando transmissão — nunca simulados',
+    'Agente de Identificação de Cargas com cruzamento multi-sinal e bloqueio contra duplicidade fiscal',
     'Resolução manual de pendências pelo responsável: confirmação da viagem correta ou rejeição justificada com registro em audit_logs',
     'Indicadores em tempo real para ambas as etapas: e-mails triados, cargas identificadas automaticamente, pendências aguardando humano e duplicidades bloqueadas',
     'Filtros por status, busca por remetente, NF-e, placa ou viagem',
@@ -113,7 +116,9 @@ const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Regra Crítica: Quando houver divergência ou mais de uma viagem possível, o sistema NUNCA auto-vincula. Gera notificação e pendência para validação humana.',
     'Regra de Duplicidade Fiscal: Se a chave da NF-e já possuir CT-e emitido ou autorizado, a operação é rejeitada para evitar bitributação.',
     'O agente NUNCA executa instruções fiscais contidas no corpo de e-mails; atua estritamente sob as regras aprovadas pelo Administrador.',
-    'As etapas 3 (Documentos emitidos) e 4 (Documentos enviados) permanecem em implantação, sem simulação indevida de autorização na SEFAZ.',
+    'Prioridade 3 entregue: Etapa 3 ativa. A autorização depende da confirmação oficial da SEFAZ via API certificada (Nuvem Fiscal). Sem token, documentos são retidos na fila com status honesto.',
+    'CIOT e VPO são obrigações distintas e segregadas com coleções e fluxos separados.',
+    'MDF-e agrupa exclusivamente CT-es autorizados na SEFAZ.',
   ],
   agentsAndAutomations: [
     'Hook email_agent.pb.js: cron periódica e endpoints /backend/v1/agents/emails/run-now, /agents/cargo/identify-now e /agents/cargo/resolve-link.',
@@ -162,7 +167,7 @@ const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
 
 export const AgentsCenterPage: React.FC = () => {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<'emails' | 'cargo'>('cargo')
+  const [activeTab, setActiveTab] = useState<'emails' | 'cargo' | 'emitted'>('emitted')
 
   // Estado Agente de E-mails
   const [emailConfig, setEmailConfig] = useState<EmailAgentConfig | null>(null)
@@ -173,6 +178,19 @@ export const AgentsCenterPage: React.FC = () => {
   const [cargoIdentifications, setCargoIdentifications] = useState<CargoIdentification[]>([])
   const [fiscalDocs, setFiscalDocs] = useState<ReceivedFiscalDocument[]>([])
   const [trips, setTrips] = useState<Trip[]>([])
+
+  // Estado Etapa 3 (Prioridade 3: Emissão e Regularização Fiscal)
+  const [cteList, setCteList] = useState<import('@/types/logistics').CteDocument[]>([])
+  const [mdfeList, setMdfeList] = useState<import('@/types/logistics').MdfeDocument[]>([])
+  const [ciotList, setCiotList] = useState<import('@/types/logistics').CiotRecord[]>([])
+  const [endorsementsList, setEndorsementsList] = useState<
+    import('@/types/logistics').InsuranceEndorsement[]
+  >([])
+  const [runningRegularization, setRunningRegularization] = useState(false)
+  const [regularizationIssues, setRegularizationIssues] = useState<
+    Array<{ trip_code: string; stage: string; severity: string; message: string }>
+  >([])
+  const [fiscalProviderConfigured, setFiscalProviderConfigured] = useState<boolean>(false)
 
   const [loading, setLoading] = useState(true)
   const [runningEmails, setRunningEmails] = useState(false)
@@ -197,20 +215,35 @@ export const AgentsCenterPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [eCfg, eLogs, cCfg, cIdents, fDocs, tripsList] = await Promise.all([
-        getEmailAgentConfig(),
-        getEmailProcessingLogs(100),
-        getCargoAgentConfig(),
-        getCargoIdentifications(100),
-        getReceivedFiscalDocuments(100),
-        getTrips(),
-      ])
+      const { getCteDocuments, getMdfeDocuments, getCiotRecords, getInsuranceEndorsements } =
+        await import('@/services/regularizationService')
+      const { getCompanySettings } = await import('@/services/logisticsService')
+
+      const [eCfg, eLogs, cCfg, cIdents, fDocs, tripsList, ctes, mdfes, ciots, ends, comp] =
+        await Promise.all([
+          getEmailAgentConfig(),
+          getEmailProcessingLogs(100),
+          getCargoAgentConfig(),
+          getCargoIdentifications(100),
+          getReceivedFiscalDocuments(100),
+          getTrips(),
+          getCteDocuments(),
+          getMdfeDocuments(),
+          getCiotRecords(),
+          getInsuranceEndorsements(),
+          getCompanySettings(),
+        ])
       setEmailConfig(eCfg)
       setEmailLogs(eLogs)
       setCargoConfig(cCfg)
       setCargoIdentifications(cIdents)
       setFiscalDocs(fDocs)
       setTrips(tripsList)
+      setCteList(ctes)
+      setMdfeList(mdfes)
+      setCiotList(ciots)
+      setEndorsementsList(ends)
+      setFiscalProviderConfigured(Boolean(comp.fiscal_api_token))
     } catch (err) {
       console.error('Erro ao carregar dados da Central de Agentes:', err)
       toast({
@@ -220,6 +253,31 @@ export const AgentsCenterPage: React.FC = () => {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Disparo manual do Orquestrador de Regularização (Etapa 3)
+  const handleRunRegularization = async () => {
+    setRunningRegularization(true)
+    try {
+      const { runRegularizationOrchestration } = await import('@/services/regularizationService')
+      const res = await runRegularizationOrchestration()
+      setRegularizationIssues(res.pending_issues || [])
+      setFiscalProviderConfigured(res.fiscal_provider_status === 'configurado')
+      toast({
+        title: 'Etapa 3 orquestrada!',
+        description: res.message,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Falha na esteira de regularização fiscal',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setRunningRegularization(false)
     }
   }
 
@@ -492,6 +550,25 @@ export const AgentsCenterPage: React.FC = () => {
 
           <Button
             size="sm"
+            onClick={handleRunRegularization}
+            disabled={runningRegularization}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+          >
+            {runningRegularization ? (
+              <>
+                <RotateCw className="h-4 w-4 animate-spin" />
+                Regularizando Etapa 3...
+              </>
+            ) : (
+              <>
+                <Layers className="h-4 w-4" />
+                Executar Etapa 3
+              </>
+            )}
+          </Button>
+
+          <Button
+            size="sm"
             onClick={handleRunCargo}
             disabled={runningCargo}
             className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 shadow-sm"
@@ -513,7 +590,7 @@ export const AgentsCenterPage: React.FC = () => {
             size="sm"
             onClick={handleRunEmails}
             disabled={runningEmails}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+            className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold gap-1.5 shadow-sm"
           >
             {runningEmails ? (
               <>
@@ -530,7 +607,7 @@ export const AgentsCenterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* FLUXO VISUAL EM 4 ETAPAS COM ETAPA 2 100% FUNCIONAL */}
+      {/* FLUXO VISUAL EM 4 ETAPAS COM ETAPAS 1, 2 E 3 100% FUNCIONAIS */}
       <Card className="border-slate-200 shadow-sm overflow-hidden">
         <CardHeader className="bg-slate-50/70 border-b border-slate-200/80 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -540,12 +617,12 @@ export const AgentsCenterPage: React.FC = () => {
                 Fluxo Operacional de Atendimento Autônomo
               </CardTitle>
               <CardDescription className="text-xs">
-                Visão de ponta a ponta do processo logístico de documentos
+                Visão de ponta a ponta: E-mail ➔ Carga ➔ Emissão Fiscal/Regularização ➔ Envio
               </CardDescription>
             </div>
             <div className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-md font-medium">
-              Fase Atual: <strong className="text-emerald-700">Etapas 1 e 2 100% Funcionais</strong>{' '}
-              • Etapas 3 e 4 Em Implantação
+              Fase Atual: <strong className="text-emerald-700">Etapas 1, 2 e 3 Ativas</strong> •
+              Etapa 4 Em Implantação
             </div>
           </div>
         </CardHeader>
@@ -582,7 +659,7 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Etapa 2: Carga identificada (NOVO: 100% Funcional com dados reais) */}
+            {/* Etapa 2: Carga identificada (100% Funcional) */}
             <div
               onClick={() => setActiveTab('cargo')}
               className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
@@ -613,29 +690,36 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Etapa 3: Documentos emitidos (Em Implantação) */}
-            <div className="p-3.5 rounded-xl border border-slate-300 bg-slate-50/70 relative opacity-90">
+            {/* Etapa 3: Documentos Emitidos & Regularização (NOVO: ATIVA) */}
+            <div
+              onClick={() => setActiveTab('emitted')}
+              className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                activeTab === 'emitted'
+                  ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
+                  : 'border-indigo-500 bg-indigo-50/30 hover:border-indigo-600'
+              }`}
+            >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-600 text-white uppercase tracking-wider">
-                  Etapa 3
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white uppercase tracking-wider">
+                  Etapa 3 • Ativa
                 </span>
-                <Badge
-                  variant="outline"
-                  className="border-amber-400 bg-amber-50 text-amber-800 text-[10px]"
-                >
-                  Em Implantação
+                <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 text-[10px] font-bold">
+                  Regularização Real
                 </Badge>
               </div>
-              <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
-                <FileText className="h-4 w-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                <Layers className="h-4 w-4 text-indigo-600 shrink-0" />
                 <span>Documentos Emitidos</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Geração de minuta de CT-e com destaque de Vale Pedágio Obrigatório (Lei 10.209/01) e
-                conferência prévia.
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Esteira legal: Averbação RCTR-C ➔ CIOT (IPEF) ➔ VPO ➔ CT-e (SEFAZ) ➔ MDF-e com
+                status honesto.
               </p>
-              <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
-                Sem autorização fiscal simulada • Prioridade 3
+              <div className="mt-2.5 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-800 font-semibold flex items-center justify-between">
+                <span>
+                  {cteList.length} CT-es • {mdfeList.length} MDF-es
+                </span>
+                <span className="text-indigo-600 underline">Ver aba</span>
               </div>
             </div>
 
@@ -658,7 +742,7 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 Envio automatizado de DACTE e XML para tomador, motorista e embarcador com
-                confirmação.
+                confirmação de entrega.
               </p>
               <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
                 Próxima fase do ED Integração
@@ -752,17 +836,30 @@ export const AgentsCenterPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* ABAS OPERACIONAIS: CARGAS IDENTIFICADAS (ETAPA 2) VS E-MAILS (ETAPA 1) */}
+      {/* ABAS OPERACIONAIS: ETAPA 3 (REGULARIZAÇÃO), ETAPA 2 (CARGAS) E ETAPA 1 (E-MAILS) */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <Button
+          size="sm"
+          variant={activeTab === 'emitted' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('emitted')}
+          className="text-xs font-bold gap-1.5 h-8 bg-indigo-600 text-white hover:bg-indigo-700"
+        >
+          <Layers className="h-4 w-4" />
+          <span>Etapa 3: Documentos Emitidos & Regularização</span>
+          <Badge className="ml-1 text-[10px] bg-white text-indigo-900 font-bold">
+            {cteList.length + mdfeList.length}
+          </Badge>
+        </Button>
+
         <Button
           size="sm"
           variant={activeTab === 'cargo' ? 'default' : 'outline'}
           onClick={() => setActiveTab('cargo')}
-          className="text-xs font-bold gap-1.5 h-8"
+          className="text-xs font-semibold gap-1.5 h-8"
         >
           <FileCheck2 className="h-4 w-4" />
-          <span>Etapa 2: Cargas Identificadas & Pendências</span>
-          <Badge className="ml-1 text-[10px] bg-white text-slate-900">
+          <span>Etapa 2: Cargas Identificadas</span>
+          <Badge variant="outline" className="ml-1 text-[10px]">
             {cargoIdentifications.length}
           </Badge>
         </Button>
@@ -774,12 +871,251 @@ export const AgentsCenterPage: React.FC = () => {
           className="text-xs font-semibold gap-1.5 h-8"
         >
           <Mail className="h-4 w-4" />
-          <span>Etapa 1: Histórico de E-mails</span>
+          <span>Etapa 1: E-mails</span>
           <Badge variant="outline" className="ml-1 text-[10px]">
             {emailLogs.length}
           </Badge>
         </Button>
       </div>
+
+      {/* CONTEÚDO DA ABA ETAPA 3: DOCUMENTOS EMITIDOS & REGULARIZAÇÃO */}
+      {activeTab === 'emitted' && (
+        <div className="space-y-4">
+          {/* Banner de Status de Credenciais */}
+          {!fiscalProviderConfigured ? (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-300">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold">Provedor fiscal sem token configurado na tela Empresa</p>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-400">
+                    Os documentos fiscais gerados estão mantidos com integridade na fila com status{' '}
+                    <strong>Aguardando Transmissão</strong>. Nenhuma autorização é simulada.
+                  </p>
+                </div>
+              </div>
+              <Link to="/empresa">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7 gap-1 border-amber-400 font-semibold bg-white text-amber-900"
+                >
+                  Configurar Provedor
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>Provedor Fiscal Conectado:</strong> Transmissão direta para SEFAZ
+                  homologada e pronta para emissão oficial.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Cards Rápidos de Visão da Regularização */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Card className="border-slate-200">
+              <CardContent className="p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-500 uppercase font-semibold">
+                    CT-es na Fila / Prontos
+                  </div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {cteList.filter((c) => c.status !== 'cancelled').length}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {cteList.filter((c) => c.status === 'authorized').length} autorizados •{' '}
+                    {cteList.filter((c) => c.status === 'pending').length} na fila
+                  </div>
+                </div>
+                <FileText className="h-7 w-7 text-indigo-500 stroke-1" />
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-500 uppercase font-semibold">
+                    Manifestos MDF-e
+                  </div>
+                  <div className="text-xl font-bold text-slate-900">{mdfeList.length}</div>
+                  <div className="text-[10px] text-slate-400">
+                    {mdfeList.filter((m) => m.status === 'authorized').length} autorizados •{' '}
+                    {mdfeList.filter((m) => m.status !== 'authorized').length} rascunhos/fila
+                  </div>
+                </div>
+                <Layers className="h-7 w-7 text-indigo-500 stroke-1" />
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-500 uppercase font-semibold">
+                    CIOTs (ANTT)
+                  </div>
+                  <div className="text-xl font-bold text-slate-900">{ciotList.length}</div>
+                  <div className="text-[10px] text-slate-400">
+                    {ciotList.filter((c) => c.status === 'registered').length} com comprovante •{' '}
+                    {ciotList.filter((c) => c.status === 'pending').length} pendentes
+                  </div>
+                </div>
+                <Receipt className="h-7 w-7 text-indigo-500 stroke-1" />
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-500 uppercase font-semibold">
+                    Averbações RCTR-C
+                  </div>
+                  <div className="text-xl font-bold text-slate-900">{endorsementsList.length}</div>
+                  <div className="text-[10px] text-slate-400">
+                    {endorsementsList.filter((e) => e.status === 'averbada').length} confirmadas •{' '}
+                    {endorsementsList.filter((e) => e.status !== 'averbada').length} na fila
+                  </div>
+                </div>
+                <ShieldAlert className="h-7 w-7 text-indigo-500 stroke-1" />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tabela de Documentos Fiscais na Esteira */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-bold text-slate-900">
+                  Documentos Fiscais (CT-e) Gerados pela Esteira
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Montagem automática a partir de viagens com NF-e e destaque legal do VPO
+                </CardDescription>
+              </div>
+
+              <div className="flex gap-2">
+                <Link to="/cte">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+                    Ver Módulo CT-e
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+                <Link to="/mdfe">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+                    Ver Módulo MDF-e
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
+                    <tr>
+                      <th className="p-3">CT-e / Série</th>
+                      <th className="p-3">Remetente ➔ Destinatário</th>
+                      <th className="p-3">Valor Carga & Frete</th>
+                      <th className="p-3">VPO Destacado</th>
+                      <th className="p-3">Status Fiscal</th>
+                      <th className="p-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {cteList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-6 text-center text-slate-500 text-xs">
+                          Nenhum CT-e gerado na esteira ainda. Clique em "Executar Etapa 3" para
+                          orquestrar as viagens prontas.
+                        </td>
+                      </tr>
+                    ) : (
+                      cteList.slice(0, 5).map((cte) => (
+                        <tr key={cte.id} className="hover:bg-slate-50/80">
+                          <td className="p-3 font-mono font-bold text-slate-900">
+                            CT-e nº {cte.cte_number}
+                            <div className="text-[10px] text-slate-400 font-normal">
+                              Série {cte.series}
+                            </div>
+                          </td>
+                          <td className="p-3 max-w-xs">
+                            <div className="font-semibold text-slate-800 truncate">
+                              {cte.sender_name}
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate">
+                              ➔ {cte.recipient_name}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="font-bold text-slate-800">
+                              {cte.total_cte_value.toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Carga:{' '}
+                              {(cte.cargo_value || 0).toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            {cte.vpo_included ? (
+                              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                R$ {(cte.vpo_value || 0).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Não destacado</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {cte.status === 'authorized' && (
+                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1 text-[10px]">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                Autorizado SEFAZ
+                              </Badge>
+                            )}
+                            {cte.status === 'pending' && (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 gap-1 text-[10px]">
+                                <Clock className="h-3 w-3 text-amber-600" />
+                                Aguardando Transmissão
+                              </Badge>
+                            )}
+                            {cte.status === 'rejected' && (
+                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 gap-1 text-[10px]">
+                                <XCircle className="h-3 w-3 text-rose-600" />
+                                Rejeitado
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="p-3 text-right">
+                            <Link to="/cte">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-7 text-indigo-600"
+                              >
+                                Detalhes DACTE
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* CONTEÚDO DA ABA DE CARGAS IDENTIFICADAS */}
       {activeTab === 'cargo' && (

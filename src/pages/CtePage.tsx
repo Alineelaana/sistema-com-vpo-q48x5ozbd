@@ -40,8 +40,10 @@ import {
   Clock,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   Eye,
   Download,
+  Send,
   ShieldCheck,
   RefreshCw,
 } from 'lucide-react'
@@ -114,6 +116,8 @@ export const CtePage: React.FC = () => {
     setCreateModalOpen(true)
   }
 
+  const [transmittingId, setTransmittingId] = useState<string | null>(null)
+
   const handleSaveManual = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
@@ -121,10 +125,11 @@ export const CtePage: React.FC = () => {
         ? manualForm.freight_value + manualForm.vpo_value
         : manualForm.freight_value
 
+      // NUNCA simular autorização fiscal: criado em fila 'pending' para transmissão oficial
       await createCteDocument({
         cte_number: manualForm.cte_number,
         series: manualForm.series,
-        access_key: `3525${Math.floor(1000000000000000000 + Math.random() * 9000000000000000000)}`,
+        access_key: '',
         sender_name: manualForm.sender_name,
         sender_document: manualForm.sender_document,
         recipient_name: manualForm.recipient_name,
@@ -134,51 +139,80 @@ export const CtePage: React.FC = () => {
         vpo_included: manualForm.vpo_included,
         vpo_value: manualForm.vpo_value,
         total_cte_value: total,
-        status: 'authorized',
-        status_message: 'Autorizado o uso do CT-e (SEFAZ)',
-        protocol: `13525${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-        issued_at: new Date().toISOString(),
+        status: 'pending',
+        status_message: 'Documento criado na fila — aguardando transmissão oficial à SEFAZ',
+        protocol: '',
       })
 
       toast({
-        title: `CT-e nº ${manualForm.cte_number} emitido com sucesso!`,
-        description: 'VPO destacado no documento com sucesso.',
+        title: `CT-e nº ${manualForm.cte_number} colocado na fila!`,
+        description: 'Documento registrado aguardando transmissão via provedor fiscal.',
       })
       setCreateModalOpen(false)
       loadData()
     } catch (err) {
       console.error(err)
       toast({
-        title: 'Erro ao emitir CT-e',
+        title: 'Erro ao registrar CT-e',
         variant: 'destructive',
       })
     }
   }
 
-  const handleSimulateStatus = async (
-    doc: CteDocument,
-    newStatus: 'authorized' | 'rejected' | 'cancelled',
-  ) => {
+  const handleTransmitCte = async (doc: CteDocument) => {
+    if (doc.status === 'authorized') {
+      toast({
+        title: 'Documento já autorizado',
+        description: 'Não é permitida nova transmissão para documento já autorizado pela SEFAZ.',
+      })
+      return
+    }
+    setTransmittingId(doc.id)
     try {
-      const messages = {
-        authorized: 'Autorizado o uso do CT-e (SEFAZ)',
-        rejected: 'Rejeição 225: Falha no Schema XML do CT-e',
-        cancelled: 'Cancelamento de CT-e homologado',
+      // Import dynamic or direct call
+      const { transmitCte } = await import('@/services/regularizationService')
+      const res = await transmitCte(doc.id)
+      if (res.status === 'authorized') {
+        toast({
+          title: `CT-e ${doc.cte_number} autorizado!`,
+          description: res.message,
+        })
+      } else if (res.status === 'rejected') {
+        toast({
+          title: `CT-e ${doc.cte_number} rejeitado pela SEFAZ`,
+          description: res.message,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Documento na fila de transmissão',
+          description: res.message,
+        })
       }
+      loadData()
+    } catch (err) {
+      toast({
+        title: 'Falha na transmissão',
+        description: 'Verifique as credenciais do provedor fiscal na tela Empresa.',
+        variant: 'destructive',
+      })
+    } finally {
+      setTransmittingId(null)
+    }
+  }
+
+  const handleCancelCte = async (doc: CteDocument) => {
+    try {
       await updateCteDocument(doc.id, {
-        status: newStatus,
-        status_message: messages[newStatus],
-        protocol:
-          newStatus === 'authorized'
-            ? `13525${Math.floor(1000000000 + Math.random() * 9000000000)}`
-            : doc.protocol,
+        status: 'cancelled',
+        status_message: 'Cancelamento solicitado pelo transportador.',
       })
       toast({
-        title: `Status do CT-e ${doc.cte_number} alterado para ${newStatus}`,
+        title: `CT-e ${doc.cte_number} cancelado`,
       })
       loadData()
     } catch (err) {
-      toast({ title: 'Erro ao atualizar status', variant: 'destructive' })
+      toast({ title: 'Erro ao cancelar CT-e', variant: 'destructive' })
     }
   }
 
@@ -225,6 +259,18 @@ export const CtePage: React.FC = () => {
             <Plus className="h-4 w-4" />
             Emitir CT-e Manual
           </Button>
+        </div>
+      </div>
+
+      {/* Banner de Integridade Fiscal */}
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-800">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+          <span>
+            <strong>Emissão Fiscal Real:</strong> A autorização depende da resposta oficial da SEFAZ
+            via provedor configurado. Sem credenciais cadastradas na tela Empresa, os documentos são
+            mantidos com segurança na fila de transmissão.
+          </span>
         </div>
       </div>
 
@@ -384,10 +430,11 @@ export const CtePage: React.FC = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleSimulateStatus(doc, 'authorized')}
-                          title="Simular Autorização SEFAZ"
+                          disabled={transmittingId === doc.id}
+                          onClick={() => handleTransmitCte(doc)}
+                          title="Transmitir para SEFAZ via Provedor Fiscal"
                         >
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <Send className="h-4 w-4 text-indigo-600" />
                         </Button>
                       )}
                     </TableCell>
@@ -502,13 +549,28 @@ export const CtePage: React.FC = () => {
 
               <DialogFooter className="pt-2 flex justify-between sm:justify-between w-full">
                 <div className="flex gap-2">
+                  {viewDoc.status === 'pending' && (
+                    <Button
+                      type="button"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      size="sm"
+                      disabled={transmittingId === viewDoc.id}
+                      onClick={() => {
+                        handleTransmitCte(viewDoc)
+                        setViewModalOpen(false)
+                      }}
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Transmitir à SEFAZ
+                    </Button>
+                  )}
                   {viewDoc.status !== 'cancelled' && (
                     <Button
                       type="button"
                       variant="destructive"
                       size="sm"
                       onClick={() => {
-                        handleSimulateStatus(viewDoc, 'cancelled')
+                        handleCancelCte(viewDoc)
                         setViewModalOpen(false)
                       }}
                     >
