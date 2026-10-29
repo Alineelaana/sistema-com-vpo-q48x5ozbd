@@ -192,6 +192,16 @@ export type AuditAction =
   | 'ciot_update'
   | 'insurance_endorsement_create'
   | 'insurance_endorsement_update'
+  | 'dispatch_agent_run'
+  | 'dispatch_agent_config'
+  | 'dispatch_template_create'
+  | 'dispatch_template_update'
+  | 'dispatch_recipient_create'
+  | 'dispatch_recipient_update'
+  | 'dispatch_recipient_toggle'
+  | 'dispatch_send_success'
+  | 'dispatch_send_fail'
+  | 'dispatch_send_retry'
 
 export interface AuditLog {
   id: string
@@ -318,6 +328,46 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, { label: string; badge: st
   insurance_endorsement_update: {
     label: 'Atualização de Averbação',
     badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
+  dispatch_agent_run: {
+    label: 'Execução Agente de Envio',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  dispatch_agent_config: {
+    label: 'Configuração do Envio',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  dispatch_template_create: {
+    label: 'Criação de Modelo de E-mail',
+    badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  },
+  dispatch_template_update: {
+    label: 'Alteração de Modelo',
+    badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  },
+  dispatch_recipient_create: {
+    label: 'Novo Destinatário',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  dispatch_recipient_update: {
+    label: 'Alteração de Destinatário',
+    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  },
+  dispatch_recipient_toggle: {
+    label: 'Ativação/Inativação Destinatário',
+    badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  dispatch_send_success: {
+    label: 'Documento Enviado com Sucesso',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  dispatch_send_fail: {
+    label: 'Falha no Envio de Documento',
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  },
+  dispatch_send_retry: {
+    label: 'Reenvio de Documento',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
   },
 }
 

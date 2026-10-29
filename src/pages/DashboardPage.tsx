@@ -22,8 +22,10 @@ import type {
 } from '@/types/logistics'
 import { getEmailAgentConfig, getEmailProcessingLogs } from '@/services/agentService'
 import { getCargoAgentConfig, getCargoIdentifications } from '@/services/cargoAgentService'
+import { getDocumentDispatchConfig, getDocumentDispatchLogs } from '@/services/dispatchAgentService'
 import type { EmailAgentConfig, EmailProcessingLog } from '@/types/agent'
 import type { CargoAgentConfig, CargoIdentification } from '@/types/cargoAgent'
+import type { DocumentDispatchConfig, DocumentDispatchLog } from '@/types/dispatchAgent'
 import { ScreenLogicModal } from '@/components/ScreenLogicModal'
 import { DASHBOARD_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
 import {
@@ -65,49 +67,65 @@ export const DashboardPage: React.FC = () => {
   const [recentAgentLogs, setRecentAgentLogs] = useState<EmailProcessingLog[]>([])
   const [cargoConfig, setCargoConfig] = useState<CargoAgentConfig | null>(null)
   const [cargoIdentifications, setCargoIdentifications] = useState<CargoIdentification[]>([])
+
+  // Agente de Envio Automático (Prioridade 4)
+  const [dispatchConfig, setDispatchConfig] = useState<DocumentDispatchConfig | null>(null)
+  const [dispatchLogs, setDispatchLogs] = useState<DocumentDispatchLog[]>([])
+
   const [logicModalOpen, setLogicModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadDashboard() {
       setLoading(true)
-      const [
-        tripsList,
-        ctesList,
-        vehList,
-        drivList,
-        comp,
-        finesList,
-        delList,
-        cfg,
-        agentLogs,
-        cCfg,
-        cIdents,
-      ] = await Promise.all([
-        getTrips(),
-        getCteDocuments(),
-        getVehicles(),
-        getDrivers(),
-        getCompanySettings(),
-        getTrafficFines(),
-        getDeliveries(),
-        getEmailAgentConfig(),
-        getEmailProcessingLogs(5),
-        getCargoAgentConfig(),
-        getCargoIdentifications(50),
-      ])
-      setTrips(tripsList)
-      setCtes(ctesList)
-      setVehicles(vehList)
-      setDrivers(drivList)
-      setCompany(comp)
-      setFines(finesList)
-      setDeliveries(delList)
-      setAgentConfig(cfg)
-      setRecentAgentLogs(agentLogs)
-      setCargoConfig(cCfg)
-      setCargoIdentifications(cIdents)
-      setLoading(false)
+      try {
+        const [
+          tripsList,
+          ctesList,
+          vehList,
+          drivList,
+          comp,
+          finesList,
+          delList,
+          cfg,
+          agentLogs,
+          cCfg,
+          cIdents,
+          dispCfg,
+          dispLogs,
+        ] = await Promise.all([
+          getTrips(),
+          getCteDocuments(),
+          getVehicles(),
+          getDrivers(),
+          getCompanySettings(),
+          getTrafficFines(),
+          getDeliveries(),
+          getEmailAgentConfig(),
+          getEmailProcessingLogs(5),
+          getCargoAgentConfig(),
+          getCargoIdentifications(50),
+          getDocumentDispatchConfig(),
+          getDocumentDispatchLogs(5),
+        ])
+        setTrips(tripsList)
+        setCtes(ctesList)
+        setVehicles(vehList)
+        setDrivers(drivList)
+        setCompany(comp)
+        setFines(finesList)
+        setDeliveries(delList)
+        setAgentConfig(cfg)
+        setRecentAgentLogs(agentLogs)
+        setCargoConfig(cCfg)
+        setCargoIdentifications(cIdents)
+        setDispatchConfig(dispCfg)
+        setDispatchLogs(dispLogs)
+      } catch (err) {
+        console.error('Erro ao carregar dashboard:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     loadDashboard()
   }, [])
@@ -339,7 +357,7 @@ export const DashboardPage: React.FC = () => {
         </CardHeader>
 
         <CardContent className="p-4 pt-3 space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {/* E-mails Processados */}
             <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-semibold text-slate-500 uppercase block">
@@ -363,7 +381,7 @@ export const DashboardPage: React.FC = () => {
                       c.match_status === 'auto_matched' || c.match_status === 'manually_confirmed',
                   ).length}
               </span>
-              <span className="text-[10px] text-slate-500 font-medium">Multi-sinal confirmado</span>
+              <span className="text-[10px] text-slate-500 font-medium">Etapa 2 ativa</span>
             </div>
 
             {/* Pendências de Revisão Humana */}
@@ -376,15 +394,13 @@ export const DashboardPage: React.FC = () => {
                   cargoIdentifications.filter((c) => c.match_status === 'pending_human_review')
                     .length}
               </span>
-              <span className="text-[10px] text-amber-700 font-medium">
-                Ambiguidade / Divergência
-              </span>
+              <span className="text-[10px] text-amber-700 font-medium">Ambiguidade / Bloqueio</span>
             </div>
 
             {/* Duplicidades Fiscais Bloqueadas */}
             <div className="p-2.5 rounded-lg bg-white border border-purple-200 bg-purple-50/40 shadow-2xs">
               <span className="text-[10px] font-semibold text-purple-900 uppercase block">
-                Duplicidades Bloqueadas
+                Duplicidades Fiscais
               </span>
               <span className="text-xl font-bold text-purple-800 mt-0.5 block">
                 {cargoConfig?.duplicates_blocked_count ||
@@ -394,16 +410,29 @@ export const DashboardPage: React.FC = () => {
               <span className="text-[10px] text-purple-600 font-medium">Prevenção fiscal</span>
             </div>
 
-            {/* Critérios de Cruzamento */}
-            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs col-span-2 sm:col-span-1">
+            {/* Documentos Enviados (Prioridade 4) */}
+            <div className="p-2.5 rounded-lg bg-white border border-emerald-200 bg-emerald-50/30 shadow-2xs">
+              <span className="text-[10px] font-semibold text-emerald-900 uppercase block">
+                Documentos Enviados
+              </span>
+              <span className="text-xl font-bold text-emerald-800 mt-0.5 block">
+                {dispatchConfig?.sent_count_total ||
+                  dispatchLogs.filter((l) => l.status === 'sent').length}
+              </span>
+              <span className="text-[10px] text-emerald-700 font-medium">Etapa 4 ativa</span>
+            </div>
+
+            {/* Falhas / Tentativas de Envio */}
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
               <span className="text-[10px] font-semibold text-slate-500 uppercase block">
-                Sinais Exigidos
+                Falhas de Envio
               </span>
-              <span className="text-sm font-bold text-indigo-700 mt-1 block">
-                Mínimo {cargoConfig?.min_matching_signals || 2} sinais
+              <span className="text-xl font-bold text-rose-700 mt-0.5 block">
+                {dispatchConfig?.failed_count_total ||
+                  dispatchLogs.filter((l) => l.status === 'failed').length}
               </span>
-              <span className="text-[10px] text-slate-500 font-medium block truncate">
-                Placa + Cliente + Datas + Condutor
+              <span className="text-[10px] text-slate-500 font-medium">
+                {dispatchConfig?.pending_retries_count || 0} retry pendente
               </span>
             </div>
           </div>

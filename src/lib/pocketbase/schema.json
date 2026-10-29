@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T15:05:32.060Z",
+  "generatedAt": "2026-10-29T15:26:28.494Z",
   "collections": [
     {
       "name": "users",
@@ -1344,7 +1344,17 @@
             "ciot_create",
             "ciot_update",
             "insurance_endorsement_create",
-            "insurance_endorsement_update"
+            "insurance_endorsement_update",
+            "dispatch_agent_run",
+            "dispatch_agent_config",
+            "dispatch_template_create",
+            "dispatch_template_update",
+            "dispatch_recipient_create",
+            "dispatch_recipient_update",
+            "dispatch_recipient_toggle",
+            "dispatch_send_success",
+            "dispatch_send_fail",
+            "dispatch_send_retry"
           ]
         },
         {
@@ -2707,6 +2717,493 @@
       "indexes": [
         "CREATE INDEX idx_endorsement_trip ON insurance_endorsements (trip_id)",
         "CREATE INDEX idx_endorsement_status ON insurance_endorsements (status)"
+      ]
+    },
+    {
+      "name": "document_dispatch_configs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin'",
+        "update": "@request.auth.role = 'admin'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "check_interval_minutes",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "max_retry_attempts",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["active", "paused", "error"]
+        },
+        {
+          "name": "last_run_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "next_run_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_run_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_error_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_count_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "failed_count_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pending_retries_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "connected_accounts_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_dispatch_status ON document_dispatch_configs (status)"]
+    },
+    {
+      "name": "document_recipients",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "update": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "customer_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "customer_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contact_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cc_emails",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_role",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "shipper",
+            "receiver",
+            "carrier",
+            "driver",
+            "broker",
+            "accountant",
+            "other"
+          ]
+        },
+        {
+          "name": "allowed_document_types",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["cte", "mdfe", "ciot", "insurance", "vpo"]
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_sent_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_recipient_email ON document_recipients (email)",
+        "CREATE INDEX idx_recipient_active ON document_recipients (is_active)",
+        "CREATE INDEX idx_recipient_doc ON document_recipients (customer_document)"
+      ]
+    },
+    {
+      "name": "document_dispatch_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin'",
+        "update": "@request.auth.role = 'admin'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "document_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["cte", "mdfe", "ciot", "insurance", "vpo", "bundle"]
+        },
+        {
+          "name": "subject_template",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "body_template",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_tmpl_doc_type ON document_dispatch_templates (document_type)",
+        "CREATE INDEX idx_tmpl_active ON document_dispatch_templates (is_active)"
+      ]
+    },
+    {
+      "name": "document_dispatch_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "dispatch_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "document_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["cte", "mdfe", "ciot", "insurance", "vpo", "bundle"]
+        },
+        {
+          "name": "document_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "document_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "document_auth_protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient_email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient_role",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sender_account",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "provider_used",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["gmail", "outlook", "system_email", "manual"]
+        },
+        {
+          "name": "template_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "template_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email_body_preview",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachments_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["sent", "failed", "retry_pending", "cancelled"]
+        },
+        {
+          "name": "sent_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "error_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "retry_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "max_retries",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "next_retry_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notification_sent",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dispatched_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_dispatch_key_uniq ON document_dispatch_logs (dispatch_key)",
+        "CREATE INDEX idx_dispatch_status_log ON document_dispatch_logs (status)",
+        "CREATE INDEX idx_dispatch_doc ON document_dispatch_logs (document_type, document_id)",
+        "CREATE INDEX idx_dispatch_recip ON document_dispatch_logs (recipient_email)"
       ]
     }
   ]

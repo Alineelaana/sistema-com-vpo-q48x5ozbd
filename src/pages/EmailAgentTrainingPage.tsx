@@ -23,6 +23,18 @@ import {
   deleteEmailAgentRule,
 } from '@/services/agentService'
 import { getCargoAgentConfig, updateCargoAgentConfig } from '@/services/cargoAgentService'
+import {
+  getDocumentDispatchConfig,
+  updateDocumentDispatchConfig,
+  getDocumentRecipients,
+  createDocumentRecipient,
+  updateDocumentRecipient,
+  deleteDocumentRecipient,
+  getDocumentDispatchTemplates,
+  createDocumentDispatchTemplate,
+  updateDocumentDispatchTemplate,
+  deleteDocumentDispatchTemplate,
+} from '@/services/dispatchAgentService'
 import type {
   EmailAgentConfig,
   EmailAgentRule,
@@ -30,6 +42,13 @@ import type {
   EmailActionType,
 } from '@/types/agent'
 import type { CargoAgentConfig } from '@/types/cargoAgent'
+import type {
+  DocumentDispatchConfig,
+  DocumentRecipient,
+  DocumentDispatchTemplate,
+  DocumentType,
+  RecipientRole,
+} from '@/types/dispatchAgent'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { ScreenLogicModal, type ScreenLogicDoc } from '@/components/ScreenLogicModal'
 import { useAuth } from '@/context/AuthContext'
@@ -55,91 +74,93 @@ import {
   Receipt,
   ShieldAlert,
   Layers,
+  Send,
+  Users,
+  FileCheck,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
 const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Treinamento & Regras dos Agentes',
-  screenBadge: 'Prioridades 1 e 2 • Gestão de Parâmetros',
+  screenBadge: 'Prioridades 1, 2, 3 e 4 • Gestão Completa dos Agentes',
   lastUpdate: '2026-10-29',
-  version: '1.1.0',
+  version: '2.0.0',
   objective:
-    'Interface administrativa unificada para parametrização das regras de triagem do Agente de E-mails (Prioridade 1) e dos critérios de cruzamento multi-sinal do Agente de Identificação de Cargas (Prioridade 2). Garante que nenhuma ação autônoma ocorra sem critérios rigorosos e aprovação prévia.',
+    'Interface administrativa unificada para parametrização das 4 etapas dos agentes: triagem de e-mails (P1), cruzamento de cargas (P2), diretrizes de regularização fiscal (P3) e Agente de Envio Automático de documentos aos destinatários (P4). Garante que nenhum documento sem autorização fiscal seja enviado e impede envios duplicados com rastreabilidade total.',
   realFeatures: [
+    'PRIORIDADE 4: Gestão do Agente de Envio Automático de Documentos aos Destinatários (ativação/pausa, intervalo cron e limite de tentativas)',
+    'PRIORIDADE 4: Cadastro de Destinatários de Documentos por cliente/operação com papéis, e-mails (direto e CC) e tipos de documento autorizados (CT-e, MDF-e, CIOT, Seguro, VPO)',
+    'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas ({{nome_cliente}}, {{numero_documento}}, {{empresa_emissora}}, {{protocolo_autorizacao}}, etc.)',
+    'PRIORIDADE 4: Regra inegociável de envio seguro: apenas documentos com autorização fiscal REAL (status authorized / registered / averbada) são despachados',
+    'PRIORIDADE 4: Controle anti-duplicidade estrito por chave única (document_type + document_id + email)',
     'Gestão completa de regras de e-mail (criação, edição, aprovação por administrador, rejeição e exclusão)',
     'Conectores Gmail e Outlook configurados no modo "cada usuário conecta sua própria caixa"',
-    'Ajuste do intervalo de monitoramento periódico (cron) do agente de e-mails',
-    'NOVO: Parametrização dos critérios de identificação de cargas (exigência de mínimo de 1 a 6 sinais coincidentes)',
-    'NOVO: Toggle para cruzamento por placa, cliente/remetente, janela de datas em dias, motorista, peso da carga e verificação de duplicidade fiscal',
-    'NOVO: Toggle para auto-vínculo quando confiável (se houver ambiguidade o sistema bloqueia e cria pendência humana)',
+    'Ajuste do intervalo de monitoramento periódico (cron) dos agentes',
+    'Parametrização dos critérios de identificação de cargas (exigência de mínimo de 1 a 6 sinais coincidentes)',
+    'Salvaguardas de regularização fiscal (CIOT ANTT obrigatório e Averbação RCTR-C Lei 14.599/2023)',
     'Histórico de auditoria registrado em audit_logs para cada alteração de configuração',
   ],
   fieldsAndButtons: [
+    {
+      name: 'Salvar Configuração do Agente de Envio',
+      type: 'Botão de Ação Primária',
+      purpose: 'Persiste ativação, intervalo de execução e limite de retries do agente de envio.',
+    },
+    {
+      name: 'Novo Destinatário de Documentos',
+      type: 'Botão com Modal',
+      purpose: 'Cadastra cliente/parceiro que deve receber os arquivos fiscais autorizados.',
+    },
+    {
+      name: 'Novo Modelo de E-mail',
+      type: 'Botão com Modal',
+      purpose: 'Cria modelo com tags dinâmicas para CT-e, MDF-e ou comprovantes de seguro/CIOT.',
+    },
     {
       name: 'Salvar Critérios de Carga',
       type: 'Botão de Ação Primária',
       purpose: 'Persiste os pesos e critérios de cruzamento do Agente de Identificação de Cargas.',
     },
-    {
-      name: 'Mínimo de Sinais Coincidentes',
-      type: 'Campo Numérico (1 a 6)',
-      purpose:
-        'Define quantos sinais simultâneos devem bater (placa, cliente, datas, motorista, peso, rota) para autorizar associação automática.',
-    },
-    {
-      name: 'Verificar Duplicidade Fiscal',
-      type: 'Toggle Booleano',
-      purpose: 'Impede reprocessamento de chaves fiscais que já possuam CT-e emitido.',
-    },
-    {
-      name: 'Nova Regra de E-mail',
-      type: 'Botão com Modal',
-      purpose: 'Cadastra nova regra de classificação sem intervenção em código.',
-    },
-    {
-      name: 'Aprovar / Rejeitar Regra',
-      type: 'Botões Administrativos',
-      purpose: 'Garante governança humana sobre o comportamento do agente.',
-    },
   ],
   businessRules: [
-    'Regra Crítica: A identificação de cargas NÃO poderá depender exclusivamente da placa. Devem ser combinados múltiplos critérios.',
-    'Regra Crítica: Ambiguidade ou divergência sempre gera pendência para revisão humana e impede auto-vínculo.',
-    'Regra de Duplicidade: Notas com CT-e já autorizado têm seu vínculo bloqueado preventivamente.',
-    'Apenas usuários com perfil Administrador podem aprovar ou rejeitar regras de triagem.',
+    'Regra Inegociável: Apenas documentos AUTORIZADOS pela SEFAZ ou com protocolo de regularização oficial são enviados.',
+    'Regra Anti-Duplicidade: Um documento autorizado jamais é enviado duas vezes ao mesmo destinatário.',
+    'Envio via Conectores: Utiliza a conta conectada de Gmail ou Outlook do próprio operador logado.',
+    'Falhas de Entrega: Notificação gerada automaticamente após esgotamento de tentativas configuradas.',
   ],
   agentsAndAutomations: [
-    'Persistência imediata na coleção cargo_agent_configs e email_agent_configs.',
-    'Gatilhos consultados pelo hook email_agent.pb.js durante cada execução automática ou manual.',
+    'Hook dispatch_agent.pb.js executado periodicamente via cron e acionado sob demanda.',
+    'Validação antes de cada disparo consultando document_dispatch_logs.',
   ],
   validations: [
-    'Mínimo de sinais entre 1 e 6.',
-    'Janela de datas entre 1 e 60 dias.',
-    'Palavras-chave obrigatórias para novas regras de e-mail.',
+    'E-mail válido obrigatório para destinatários.',
+    'Ao menos um tipo de documento deve ser selecionado para cada destinatário.',
+    'Intervalo de verificação entre 2 e 1440 minutos.',
+    'Tentativas de reenvio entre 1 e 10.',
   ],
   integrations: [
-    'Coleções cargo_agent_configs, email_agent_configs, email_agent_rules e audit_logs.',
-    'Conectores Gmail e Outlook via API Skip Connectors.',
+    'Coleções document_dispatch_configs, document_recipients, document_dispatch_templates e document_dispatch_logs.',
+    'Conectores Gmail e Outlook via Skip Connectors API.',
   ],
   flowsAndDependencies: [
-    'Alterações nestes parâmetros afetam imediatamente o próximo ciclo do Agente de Cargas e do Agente de E-mails.',
+    'Documento entra na Etapa 3 ➔ É autorizado na SEFAZ ➔ Etapa 4 identifica destinatários cadastrados ➔ Dispara e-mail com DACTE/DAMDFE/XML anexos ➔ Registra em logs.',
   ],
   dataSourceAndDestination: {
-    origin: 'Entrada manual de administradores e gestores.',
-    destination: 'Coleções cargo_agent_configs e email_agent_rules.',
-    persistence: 'Banco SQLite via PocketBase v0.36.',
+    origin: 'Parâmetros definidos por administradores e gestores.',
+    destination: 'Coleções de configuração e modelos no PocketBase.',
+    persistence: 'Banco de dados Skip Cloud com integridade referencial.',
   },
   permissions: [
-    { role: 'Administrador', access: 'Total: pode alterar critérios, aprovar e rejeitar regras.' },
     {
-      role: 'Gestor Operacional',
-      access: 'Pode sugerir regras e alterar configurações operacionais.',
+      role: 'Administrador',
+      access: 'Total: pode alterar regras, destinatários, modelos e parâmetros.',
     },
-    { role: 'Demais perfis', access: 'Somente leitura ou sem acesso às ações administrativas.' },
+    { role: 'Gestor Operacional', access: 'Pode cadastrar destinatários e modelos operacionais.' },
+    { role: 'Demais perfis', access: 'Visualização de diretrizes.' },
   ],
   notificationsAndErrors: [
-    'Feedback imediato com toast após persistência.',
-    'Mensagens claras caso haja erro de rede ou validação.',
+    'Notificação imediata no centro de avisos quando o limite de retries é excedido.',
+    'Toasts informativos de sucesso e erro em todas as ações.',
   ],
 }
 
@@ -167,6 +188,39 @@ export const EmailAgentTrainingPage: React.FC = () => {
   const [autoLinkConfident, setAutoLinkConfident] = useState(true)
   const [savingCargoConfig, setSavingCargoConfig] = useState(false)
 
+  // Estado Agente de Envio Automático (Prioridade 4)
+  const [dispatchConfig, setDispatchConfig] = useState<DocumentDispatchConfig | null>(null)
+  const [dispatchActive, setDispatchActive] = useState(true)
+  const [dispatchInterval, setDispatchInterval] = useState(5)
+  const [dispatchMaxRetries, setDispatchMaxRetries] = useState(3)
+  const [savingDispatchConfig, setSavingDispatchConfig] = useState(false)
+
+  const [recipients, setRecipients] = useState<DocumentRecipient[]>([])
+  const [recipientModalOpen, setRecipientModalOpen] = useState(false)
+  const [editingRecipient, setEditingRecipient] = useState<DocumentRecipient | null>(null)
+
+  // Form Destinatário
+  const [recipCustomerName, setRecipCustomerName] = useState('')
+  const [recipDoc, setRecipDoc] = useState('')
+  const [recipContactName, setRecipContactName] = useState('')
+  const [recipEmail, setRecipEmail] = useState('')
+  const [recipCcEmails, setRecipCcEmails] = useState('')
+  const [recipRole, setRecipRole] = useState<RecipientRole>('receiver')
+  const [recipAllowedTypes, setRecipAllowedTypes] = useState<DocumentType[]>(['cte', 'mdfe'])
+  const [recipNotes, setRecipNotes] = useState('')
+
+  const [templates, setTemplates] = useState<DocumentDispatchTemplate[]>([])
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<DocumentDispatchTemplate | null>(null)
+
+  // Form Template
+  const [tmplName, setTmplName] = useState('')
+  const [tmplDocType, setTmplDocType] = useState<DocumentType>('cte')
+  const [tmplSubject, setTmplSubject] = useState('')
+  const [tmplBody, setTmplBody] = useState('')
+  const [tmplDesc, setTmplDesc] = useState('')
+  const [tmplIsDefault, setTmplIsDefault] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [savingConfig, setSavingConfig] = useState(false)
   const [ruleModalOpen, setRuleModalOpen] = useState(false)
@@ -185,10 +239,13 @@ export const EmailAgentTrainingPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [eCfg, rulesData, cCfg] = await Promise.all([
+      const [eCfg, rulesData, cCfg, dCfg, recipList, tmplList] = await Promise.all([
         getEmailAgentConfig(),
         getEmailAgentRules(),
         getCargoAgentConfig(),
+        getDocumentDispatchConfig(),
+        getDocumentRecipients(100),
+        getDocumentDispatchTemplates(50),
       ])
 
       if (eCfg) {
@@ -210,6 +267,15 @@ export const EmailAgentTrainingPage: React.FC = () => {
         setCheckDuplicates(cCfg.check_fiscal_duplicates)
         setAutoLinkConfident(cCfg.auto_link_when_confident)
       }
+
+      if (dCfg) {
+        setDispatchConfig(dCfg)
+        setDispatchActive(dCfg.is_active)
+        setDispatchInterval(dCfg.check_interval_minutes || 5)
+        setDispatchMaxRetries(dCfg.max_retry_attempts || 3)
+      }
+      setRecipients(recipList)
+      setTemplates(tmplList)
     } catch (err) {
       console.error('Erro ao carregar configurações de treinamento:', err)
       toast({
@@ -309,6 +375,219 @@ export const EmailAgentTrainingPage: React.FC = () => {
     setPriorityOrder(rule.order_priority)
     setRuleNotes(rule.description || '')
     setRuleModalOpen(true)
+  }
+
+  // Salvar Configuração do Agente de Envio (Prioridade 4)
+  const handleSaveDispatchConfig = async () => {
+    if (!dispatchConfig) return
+    setSavingDispatchConfig(true)
+    try {
+      await updateDocumentDispatchConfig(dispatchConfig.id, {
+        is_active: dispatchActive,
+        check_interval_minutes: Number(dispatchInterval),
+        max_retry_attempts: Number(dispatchMaxRetries),
+        status: dispatchActive ? 'active' : 'paused',
+      })
+      toast({
+        title: 'Configuração do Agente de Envio salva!',
+        description: `Agente ${dispatchActive ? 'ATIVO' : 'PAUSADO'}, intervalo de ${dispatchInterval} min e máx de ${dispatchMaxRetries} retries.`,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao salvar configuração do envio',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingDispatchConfig(false)
+    }
+  }
+
+  // Abrir Modal Destinatário
+  const handleOpenCreateRecipient = () => {
+    setEditingRecipient(null)
+    setRecipCustomerName('')
+    setRecipDoc('')
+    setRecipContactName('')
+    setRecipEmail('')
+    setRecipCcEmails('')
+    setRecipRole('receiver')
+    setRecipAllowedTypes(['cte', 'mdfe'])
+    setRecipNotes('')
+    setRecipientModalOpen(true)
+  }
+
+  const handleOpenEditRecipient = (recip: DocumentRecipient) => {
+    setEditingRecipient(recip)
+    setRecipCustomerName(recip.customer_name)
+    setRecipDoc(recip.customer_document || '')
+    setRecipContactName(recip.contact_name || '')
+    setRecipEmail(recip.email)
+    setRecipCcEmails(recip.cc_emails || '')
+    setRecipRole(recip.recipient_role)
+    setRecipAllowedTypes(recip.allowed_document_types || ['cte'])
+    setRecipNotes(recip.notes || '')
+    setRecipientModalOpen(true)
+  }
+
+  const handleSaveRecipient = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!recipCustomerName.trim() || !recipEmail.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Informe o nome do cliente e o e-mail de envio.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (recipAllowedTypes.length === 0) {
+      toast({
+        title: 'Documentos autorizados',
+        description: 'Selecione ao menos um tipo de documento para este destinatário.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      if (editingRecipient) {
+        await updateDocumentRecipient(editingRecipient.id, {
+          customer_name: recipCustomerName.trim(),
+          customer_document: recipDoc.trim(),
+          contact_name: recipContactName.trim(),
+          email: recipEmail.trim(),
+          cc_emails: recipCcEmails.trim(),
+          recipient_role: recipRole,
+          allowed_document_types: recipAllowedTypes,
+          notes: recipNotes.trim(),
+        })
+        toast({ title: 'Destinatário atualizado com sucesso!' })
+      } else {
+        await createDocumentRecipient({
+          customer_name: recipCustomerName.trim(),
+          customer_document: recipDoc.trim(),
+          contact_name: recipContactName.trim(),
+          email: recipEmail.trim(),
+          cc_emails: recipCcEmails.trim(),
+          recipient_role: recipRole,
+          allowed_document_types: recipAllowedTypes,
+          is_active: true,
+          notes: recipNotes.trim(),
+        })
+        toast({ title: 'Destinatário cadastrado com sucesso!' })
+      }
+      setRecipientModalOpen(false)
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao salvar destinatário', description: msg, variant: 'destructive' })
+    }
+  }
+
+  const handleToggleRecipientStatus = async (recip: DocumentRecipient) => {
+    try {
+      await updateDocumentRecipient(recip.id, { is_active: !recip.is_active })
+      toast({
+        title: `Destinatário ${!recip.is_active ? 'ativado' : 'inativado'} com sucesso!`,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao alterar status', description: msg, variant: 'destructive' })
+    }
+  }
+
+  const handleDeleteRecipient = async (id: string) => {
+    if (!window.confirm('Deseja excluir este destinatário?')) return
+    try {
+      await deleteDocumentRecipient(id)
+      toast({ title: 'Destinatário excluído!' })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao excluir', description: msg, variant: 'destructive' })
+    }
+  }
+
+  // Modelos de Mensagem (Templates)
+  const handleOpenCreateTemplate = () => {
+    setEditingTemplate(null)
+    setTmplName('')
+    setTmplDocType('cte')
+    setTmplSubject('{{empresa_emissora}} - {{tipo_documento}} nº {{numero_documento}} Autorizado')
+    setTmplBody(
+      `Prezado(a) {{nome_cliente}},\n\nInformamos que o {{tipo_documento}} nº {{numero_documento}} foi autorizado pela SEFAZ sob o protocolo {{protocolo_autorizacao}}.\n\nAtenciosamente,\n{{empresa_emissora}}`,
+    )
+    setTmplDesc('')
+    setTmplIsDefault(false)
+    setTemplateModalOpen(true)
+  }
+
+  const handleOpenEditTemplate = (tmpl: DocumentDispatchTemplate) => {
+    setEditingTemplate(tmpl)
+    setTmplName(tmpl.name)
+    setTmplDocType(tmpl.document_type)
+    setTmplSubject(tmpl.subject_template)
+    setTmplBody(tmpl.body_template)
+    setTmplDesc(tmpl.description || '')
+    setTmplIsDefault(tmpl.is_default)
+    setTemplateModalOpen(true)
+  }
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!tmplName.trim() || !tmplSubject.trim() || !tmplBody.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Informe o nome, o assunto e o corpo do modelo de e-mail.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      if (editingTemplate) {
+        await updateDocumentDispatchTemplate(editingTemplate.id, {
+          name: tmplName.trim(),
+          document_type: tmplDocType,
+          subject_template: tmplSubject.trim(),
+          body_template: tmplBody.trim(),
+          description: tmplDesc.trim(),
+          is_default: tmplIsDefault,
+        })
+        toast({ title: 'Modelo atualizado com sucesso!' })
+      } else {
+        await createDocumentDispatchTemplate({
+          name: tmplName.trim(),
+          document_type: tmplDocType,
+          subject_template: tmplSubject.trim(),
+          body_template: tmplBody.trim(),
+          description: tmplDesc.trim(),
+          is_default: tmplIsDefault,
+          is_active: true,
+        })
+        toast({ title: 'Modelo de mensagem criado com sucesso!' })
+      }
+      setTemplateModalOpen(false)
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao salvar modelo', description: msg, variant: 'destructive' })
+    }
+  }
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!window.confirm('Deseja excluir este modelo de mensagem?')) return
+    try {
+      await deleteDocumentDispatchTemplate(id)
+      toast({ title: 'Modelo excluído com sucesso!' })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: 'Erro ao excluir modelo', description: msg, variant: 'destructive' })
+    }
   }
 
   // Salvar Regra de E-mail
@@ -416,15 +695,15 @@ export const EmailAgentTrainingPage: React.FC = () => {
             <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-400/30 text-[10px] uppercase">
               Governança & Parâmetros dos Agentes
             </Badge>
-            <span className="text-xs text-slate-300">Prioridades 1 & 2 Ativas</span>
+            <span className="text-xs text-slate-300">Prioridades 1, 2, 3 e 4 Ativas</span>
           </div>
           <h1 className="text-xl md:text-2xl font-extrabold mt-1 tracking-tight flex items-center gap-2">
             <Sliders className="h-6 w-6 text-indigo-400" />
             Treinamento & Regras dos Agentes Autônomos
           </h1>
           <p className="text-xs md:text-sm text-slate-300 max-w-2xl mt-0.5">
-            Parametrize com rigor a triagem de e-mails e os critérios de cruzamento de cargas para
-            manter segurança operacional absoluta.
+            Parametrize a triagem de e-mails, o cruzamento de cargas, diretrizes fiscais e o Agente
+            de Envio Automático de documentos.
           </p>
         </div>
 
@@ -440,6 +719,418 @@ export const EmailAgentTrainingPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* SEÇÃO PRIORIDADE 4: CONFIGURAÇÃO DO AGENTE DE ENVIO AUTOMÁTICO DE DOCUMENTOS */}
+      <Card className="border-emerald-300 shadow-sm bg-gradient-to-b from-emerald-50/20 to-transparent">
+        <CardHeader className="border-b border-emerald-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                  Prioridade 4 • Agente de Envio Automático
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="text-emerald-800 border-emerald-300 text-[10px]"
+                >
+                  Etapa Final do Fluxo
+                </Badge>
+              </div>
+              <CardTitle className="text-base font-bold text-slate-900 mt-1 flex items-center gap-2">
+                <Send className="h-5 w-5 text-emerald-600" />
+                <span>Parâmetros de Envio de Documentos Fiscais Autorizados</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-600">
+                Apenas documentos devidamente AUTORIZADOS pela SEFAZ ou com protocolo oficial são
+                despachados aos destinatários.
+              </CardDescription>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleSaveDispatchConfig}
+              disabled={savingDispatchConfig || !isAdmin}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 self-start sm:self-auto"
+            >
+              <Save className="h-4 w-4" />
+              {savingDispatchConfig ? 'Salvando...' : 'Salvar Configuração do Envio'}
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-5 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Status do Agente de Envio */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Zap className="h-4 w-4 text-emerald-600" />
+                  Agente de Envio Ativo
+                </label>
+                <Switch
+                  checked={dispatchActive}
+                  onCheckedChange={setDispatchActive}
+                  disabled={!isAdmin}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Quando ativo, verifica novos documentos autorizados e dispara e-mails
+                automaticamente.
+              </p>
+              <div className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded inline-block">
+                {dispatchActive
+                  ? 'Status: Em Operação Automática'
+                  : 'Status: Pausado pelo Administrador'}
+              </div>
+            </div>
+
+            {/* Intervalo de Verificação (Cron) */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-emerald-600" />
+                Intervalo do Cron de Envio
+              </label>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Frequência em minutos para varredura de novos CT-es, MDF-es e comprovantes
+                autorizados.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={2}
+                  max={1440}
+                  value={dispatchInterval}
+                  onChange={(e) =>
+                    setDispatchInterval(Math.max(2, Math.min(1440, Number(e.target.value))))
+                  }
+                  className="w-20 text-center font-bold text-sm h-8"
+                  disabled={!isAdmin}
+                />
+                <span className="text-xs text-slate-600 font-medium">minutos (padrão: 5)</span>
+              </div>
+            </div>
+
+            {/* Limite de Tentativas em Caso de Falha */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <RotateCw className="h-4 w-4 text-emerald-600" />
+                Limite de Tentativas (Retry)
+              </label>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Em caso de erro SMTP, tenta reenviar até atingir este limite antes de notificar o
+                gestor.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={dispatchMaxRetries}
+                  onChange={(e) =>
+                    setDispatchMaxRetries(Math.max(1, Math.min(10, Number(e.target.value))))
+                  }
+                  className="w-20 text-center font-bold text-sm h-8"
+                  disabled={!isAdmin}
+                />
+                <span className="text-xs text-slate-600 font-medium">tentativas máximas</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Avisos Regulatórios e Anti-Duplicidade */}
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs text-emerald-950 flex items-start gap-2.5">
+            <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="block font-bold">
+                Salvaguardas Inegociáveis do Agente de Envio (Prioridade 4):
+              </strong>
+              <div>
+                <strong>1. Nunca simular autorização:</strong> Somente documentos com status oficial
+                <code className="mx-1 bg-white px-1.5 py-0.5 rounded border border-emerald-300 font-mono text-[11px]">
+                  authorized
+                </code>{' '}
+                /
+                <code className="mx-1 bg-white px-1.5 py-0.5 rounded border border-emerald-300 font-mono text-[11px]">
+                  registered
+                </code>{' '}
+                /
+                <code className="mx-1 bg-white px-1.5 py-0.5 rounded border border-emerald-300 font-mono text-[11px]">
+                  averbada
+                </code>
+                são elegíveis para disparo. Documentos em rascunho ou pendentes nunca são enviados.
+              </div>
+              <div>
+                <strong>2. Chave Oficial Anti-Duplicidade:</strong> Cada envio é registrado com
+                chave única{' '}
+                <code className="mx-1 bg-white px-1.5 py-0.5 rounded border border-emerald-300 font-mono text-[11px]">
+                  [tipo_doc]_[id]_[email]
+                </code>
+                . O mesmo documento autorizado jamais é reenviado por engano.
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SEÇÃO: DESTINATÁRIOS DE DOCUMENTOS FISCAIS */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Users className="h-5 w-5 text-indigo-600" />
+                <span>Destinatários de Documentos Cadastrados ({recipients.length})</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Mapeamento por cliente/embarcador/destinatário com tipos de documentos autorizados
+                para recebimento automático.
+              </CardDescription>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleOpenCreateRecipient}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              Novo Destinatário
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Cliente / Contato</th>
+                  <th className="p-3">Papel</th>
+                  <th className="p-3">E-mail Principal / Cópias (CC)</th>
+                  <th className="p-3">Documentos Autorizados</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Histórico</th>
+                  <th className="p-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recipients.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3">
+                      <div className="font-bold text-slate-900">{r.customer_name}</div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        {r.customer_document || 'Sem documento'} • {r.contact_name || 'Geral'}
+                      </div>
+                    </td>
+
+                    <td className="p-3 whitespace-nowrap">
+                      <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                        {r.recipient_role === 'receiver'
+                          ? 'Destinatário'
+                          : r.recipient_role === 'shipper'
+                            ? 'Embarcador'
+                            : r.recipient_role}
+                      </Badge>
+                    </td>
+
+                    <td className="p-3 max-w-xs">
+                      <div className="text-slate-800 font-mono text-[11px] font-semibold">
+                        {r.email}
+                      </div>
+                      {r.cc_emails && (
+                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                          CC: {r.cc_emails}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-3 whitespace-nowrap">
+                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {r.allowed_document_types.map((type) => (
+                          <Badge
+                            key={type}
+                            className="bg-slate-100 text-slate-700 border-slate-300 text-[9px] uppercase"
+                          >
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+
+                    <td className="p-3 whitespace-nowrap">
+                      {r.is_active ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                          Ativo
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-slate-100 text-slate-600 border-slate-300 text-[10px]">
+                          Inativo
+                        </Badge>
+                      )}
+                    </td>
+
+                    <td className="p-3 whitespace-nowrap text-[11px] text-slate-600">
+                      <div>
+                        <strong>{r.sent_count || 0}</strong> envios
+                      </div>
+                      {r.last_sent_at && (
+                        <div className="text-[10px] text-slate-400">
+                          Último: {new Date(r.last_sent_at).toLocaleDateString('pt-BR')}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-right whitespace-nowrap space-x-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleToggleRecipientStatus(r)}
+                        className="h-7 text-xs px-2"
+                      >
+                        {r.is_active ? 'Desativar' : 'Ativar'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenEditRecipient(r)}
+                        className="h-7 w-7 p-0 text-slate-600"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteRecipient(r.id)}
+                          className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SEÇÃO: MODELOS DE MENSAGEM CONFIGURÁVEIS (TEMPLATES DE E-MAIL) */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <FileCheck className="h-5 w-5 text-indigo-600" />
+                <span>Modelos de Mensagem de Envio ({templates.length})</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Templates dinâmicos de e-mail personalizáveis com variáveis do documento e da
+                transportadora.
+              </CardDescription>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleOpenCreateTemplate}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              Novo Modelo de E-mail
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {templates.map((tmpl) => (
+              <div
+                key={tmpl.id}
+                className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between space-y-3"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge className="bg-indigo-50 text-indigo-800 border-indigo-200 text-[10px] uppercase font-mono">
+                      Tipo: {tmpl.document_type}
+                    </Badge>
+                    {tmpl.is_default && (
+                      <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px]">
+                        Padrão
+                      </Badge>
+                    )}
+                  </div>
+                  <h3 className="font-bold text-sm text-slate-900 mt-2">{tmpl.name}</h3>
+                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                    {tmpl.description || 'Sem descrição'}
+                  </p>
+
+                  <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-[11px] font-mono text-slate-700">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">
+                      Assunto:
+                    </span>
+                    <span className="truncate block font-semibold">{tmpl.subject_template}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span className="text-[10px] text-slate-400">Variáveis dinâmicas ativas</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenEditTemplate(tmpl)}
+                      className="h-7 text-xs px-2.5 gap-1"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                      Editar
+                    </Button>
+                    {isAdmin && !tmpl.is_default && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteTemplate(tmpl.id)}
+                        className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+            <span className="font-bold text-slate-800 block">
+              Variáveis disponíveis para templates:
+            </span>
+            <div className="flex flex-wrap gap-1.5 font-mono text-[11px]">
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{nome_cliente}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{numero_documento}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{tipo_documento}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{empresa_emissora}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{protocolo_autorizacao}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{viagem}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{chave_documento}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700">
+                {'{{data_documento}}'}
+              </code>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* SEÇÃO NOVA: CRITÉRIOS DE CRUZAMENTO DO AGENTE DE IDENTIFICAÇÃO DE CARGAS (PRIORIDADE 2) */}
       <Card className="border-indigo-200/80 shadow-sm bg-gradient-to-b from-indigo-50/20 to-transparent">
@@ -991,6 +1682,293 @@ export const EmailAgentTrainingPage: React.FC = () => {
                 className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
               >
                 Salvar Regra
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: NOVO / EDITAR DESTINATÁRIO DE DOCUMENTOS */}
+      <Dialog open={recipientModalOpen} onOpenChange={setRecipientModalOpen}>
+        <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
+          <form onSubmit={handleSaveRecipient} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-slate-900">
+                {editingRecipient
+                  ? 'Editar Destinatário de Documentos'
+                  : 'Novo Destinatário de Documentos Fiscais'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Cadastre o cliente, embarcador ou parceiro que receberá os arquivos fiscais
+                autorizados.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Nome do Cliente / Razão Social *
+                  </label>
+                  <Input
+                    value={recipCustomerName}
+                    onChange={(e) => setRecipCustomerName(e.target.value)}
+                    placeholder="Ex.: Supermercado Nova Esperança Ltda"
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">CNPJ ou CPF</label>
+                  <Input
+                    value={recipDoc}
+                    onChange={(e) => setRecipDoc(e.target.value)}
+                    placeholder="Ex.: 14.281.940/0001-52"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    E-mail Principal para Envio *
+                  </label>
+                  <Input
+                    type="email"
+                    value={recipEmail}
+                    onChange={(e) => setRecipEmail(e.target.value)}
+                    placeholder="Ex.: fiscal@cliente.com.br"
+                    required
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Papel na Operação
+                  </label>
+                  <select
+                    value={recipRole}
+                    onChange={(e) => setRecipRole(e.target.value as RecipientRole)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                  >
+                    <option value="receiver">Destinatário da Carga</option>
+                    <option value="shipper">Embarcador / Remetente</option>
+                    <option value="carrier">Transportadora Subcontratada</option>
+                    <option value="driver">Condutor / Motorista</option>
+                    <option value="broker">Corretora de Seguros</option>
+                    <option value="accountant">Contabilidade / Fiscal</option>
+                    <option value="other">Outro Parceiro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Contato Responsável / Setor
+                </label>
+                <Input
+                  value={recipContactName}
+                  onChange={(e) => setRecipContactName(e.target.value)}
+                  placeholder="Ex.: Roberto Alves - Gerência de Faturamento"
+                  className="text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  E-mails em Cópia (CC) - separados por vírgula
+                </label>
+                <Input
+                  value={recipCcEmails}
+                  onChange={(e) => setRecipCcEmails(e.target.value)}
+                  placeholder="Ex.: compras@cliente.com.br, xml@cliente.com.br"
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Documentos que este destinatário deve receber *
+                </label>
+                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  {[
+                    { id: 'cte', label: 'CT-e (DACTE + XML)' },
+                    { id: 'mdfe', label: 'MDF-e (DAMDFE + XML)' },
+                    { id: 'ciot', label: 'Comprovante CIOT' },
+                    { id: 'insurance', label: 'Averbação de Seguro' },
+                    { id: 'vpo', label: 'Comprovante VPO' },
+                  ].map((doc) => {
+                    const isChecked = recipAllowedTypes.includes(doc.id as DocumentType)
+                    return (
+                      <label
+                        key={doc.id}
+                        className="flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setRecipAllowedTypes([...recipAllowedTypes, doc.id as DocumentType])
+                            } else {
+                              setRecipAllowedTypes(recipAllowedTypes.filter((t) => t !== doc.id))
+                            }
+                          }}
+                          className="rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        {doc.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Observações Operacionais
+                </label>
+                <Input
+                  value={recipNotes}
+                  onChange={(e) => setRecipNotes(e.target.value)}
+                  placeholder="Ex.: Exige DACTE legível para conferência de descarga"
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-3 border-t flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setRecipientModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+              >
+                Salvar Destinatário
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: NOVO / EDITAR MODELO DE MENSAGEM */}
+      <Dialog open={templateModalOpen} onOpenChange={setTemplateModalOpen}>
+        <DialogContent className="max-w-xl bg-white p-6 rounded-2xl shadow-xl">
+          <form onSubmit={handleSaveTemplate} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-slate-900">
+                {editingTemplate ? 'Editar Modelo de Mensagem' : 'Novo Modelo de Mensagem de Envio'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Configure o texto padrão do e-mail com tags dinâmicas substituídas na hora do envio.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Nome do Modelo *
+                  </label>
+                  <Input
+                    value={tmplName}
+                    onChange={(e) => setTmplName(e.target.value)}
+                    placeholder="Ex.: CT-e Autorizado - Tomador"
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Tipo de Documento Alvo
+                  </label>
+                  <select
+                    value={tmplDocType}
+                    onChange={(e) => setTmplDocType(e.target.value as DocumentType)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                  >
+                    <option value="cte">Conhecimento de Transporte (CT-e)</option>
+                    <option value="mdfe">Manifesto Eletrônico (MDF-e)</option>
+                    <option value="ciot">Comprovante CIOT</option>
+                    <option value="insurance">Averbação de Seguro RCTR-C</option>
+                    <option value="vpo">Vale Pedágio Obrigatório (VPO)</option>
+                    <option value="bundle">Dossiê Completo de Regularização</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Assunto do E-mail (com variáveis) *
+                </label>
+                <Input
+                  value={tmplSubject}
+                  onChange={(e) => setTmplSubject(e.target.value)}
+                  placeholder="Ex.: {{empresa_emissora}} - CT-e nº {{numero_documento}} Autorizado"
+                  required
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Corpo da Mensagem (com variáveis) *
+                </label>
+                <textarea
+                  value={tmplBody}
+                  onChange={(e) => setTmplBody(e.target.value)}
+                  rows={6}
+                  required
+                  className="w-full p-2.5 rounded-lg border border-slate-300 bg-white text-xs font-mono focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Prezado(a) {{nome_cliente}}, ..."
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
+                <div>
+                  <span className="font-bold text-slate-800 block">Modelo Padrão</span>
+                  <span className="text-[11px] text-slate-500">
+                    Usado automaticamente caso nenhum modelo específico seja selecionado
+                  </span>
+                </div>
+                <Switch checked={tmplIsDefault} onCheckedChange={setTmplIsDefault} />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Descrição</label>
+                <Input
+                  value={tmplDesc}
+                  onChange={(e) => setTmplDesc(e.target.value)}
+                  placeholder="Ex.: Modelo oficial para clientes da Rota Sul"
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-3 border-t flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setTemplateModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+              >
+                Salvar Modelo
               </Button>
             </DialogFooter>
           </form>

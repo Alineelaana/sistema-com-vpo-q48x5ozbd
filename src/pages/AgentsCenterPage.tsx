@@ -23,6 +23,12 @@ import {
   triggerCargoAgentRun,
   resolveCargoLink,
 } from '@/services/cargoAgentService'
+import {
+  getDocumentDispatchConfig,
+  getDocumentDispatchLogs,
+  triggerDocumentDispatchRun,
+  retryDispatchLog,
+} from '@/services/dispatchAgentService'
 import { getTrips } from '@/services/logisticsService'
 import type { EmailAgentConfig, EmailProcessingLog } from '@/types/agent'
 import type {
@@ -30,6 +36,7 @@ import type {
   CargoIdentification,
   ReceivedFiscalDocument,
 } from '@/types/cargoAgent'
+import type { DocumentDispatchConfig, DocumentDispatchLog } from '@/types/dispatchAgent'
 import type { Trip } from '@/types/logistics'
 import { ScreenLogicModal, type ScreenLogicDoc } from '@/components/ScreenLogicModal'
 import {
@@ -59,116 +66,100 @@ import {
   Layers,
   ShieldAlert,
   XCircle,
+  Send,
+  MailCheck,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
 
 const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Central de Agentes',
-  screenBadge: 'Prioridades 1 e 2 • ED Integração',
+  screenBadge: 'Prioridades 1, 2, 3 e 4 • Todas as 4 Etapas 100% Ativas',
   lastUpdate: '2026-10-29',
-  version: '1.1.0',
+  version: '2.0.0',
   objective:
-    'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Com a entrega das Prioridades 1, 2 e 3, as Etapas 1 (Agente de E-mails), 2 (Agente de Identificação de Cargas) e 3 (Documentos Emitidos / Regularização Fiscal com MDF-e, CIOT e Seguros) estão 100% ativas com dados e integrações reais. Sem credenciais cadastradas, os documentos permanecem com status honesto (aguardando transmissão/fila) sem qualquer simulação de autorização. A Etapa 4 (Documentos enviados) permanece transparentemente em implantação.',
+    'Painel operacional unificado para visualização e execução das 4 etapas autônomas do ED Integração: Etapa 1 (E-mail recebido e triado), Etapa 2 (Carga identificada com multi-sinal), Etapa 3 (Documentos emitidos com regularização fiscal legal) e Etapa 4 (Documentos enviados aos destinatários). Nenhuma autorização é simulada: apenas documentos oficialmente autorizados são despachados, com rastreabilidade completa e controle rigoroso anti-duplicação.',
   realFeatures: [
-    'Fluxo visual em 4 etapas detalhando o status real: Etapas 1, 2 e 3 100% ativas com dados e APIs reais; Etapa 4 em implantação',
-    'Etapa 3 100% ativa: Orquestração de regularização fiscal legal (Averbação RCTR-C ➔ CIOT IPEF ➔ VPO ➔ CT-e SEFAZ ➔ MDF-e) via hook de backend fiscal_regularization.pb.js',
-    'Transmissão certificada via Nuvem Fiscal no backend com chave segura; interface preparada para Focus NFe e TecnoSpeed',
-    'Tratamento honesto de status fiscal: documentos sem credenciais permanecem retidos na fila como aguardando transmissão — nunca simulados',
-    'Agente de Identificação de Cargas com cruzamento multi-sinal e bloqueio contra duplicidade fiscal',
-    'Resolução manual de pendências pelo responsável: confirmação da viagem correta ou rejeição justificada com registro em audit_logs',
-    'Indicadores em tempo real para as três etapas: e-mails triados, cargas vinculadas, pendências aguardando humano, CT-es na esteira, manifestos MDF-e, CIOTs ANTT e averbações de apólices',
-    'Filtros por status, busca por remetente, NF-e, placa ou viagem',
-    'Visualização de sinais coincidentes confirmados pelo agente e motivos de divergência',
+    'Fluxo visual em 4 etapas 100% ativas e funcionais: E-mail Recebido ➔ Carga Identificada ➔ Documentos Emitidos ➔ Documentos Enviados',
+    'Etapa 4 ativa: Agente de Envio Automático com identificação de destinatários cadastrados, templates dinâmicos e disparo via caixas conectadas do usuário (Gmail/Outlook)',
+    'Controle oficial anti-duplicidade: chave única `${doc_type}_${doc_id}_${email}` impede reenvios indevidos do mesmo documento autorizado ao mesmo destinatário',
+    'Monitoramento de falhas e retentativas configuráveis com limite e notificação no sistema ao responsável',
+    'Ação de reenvio manual específico para documentos com falha de entrega',
+    'Etapa 3 ativa: Orquestração de regularização fiscal legal (Averbação RCTR-C ➔ CIOT IPEF ➔ VPO ➔ CT-e SEFAZ ➔ MDF-e)',
+    'Agente de Identificação de Cargas (Etapa 2) com cruzamento multi-sinal e prevenção de duplicidade fiscal',
+    'Agente de E-mails (Etapa 1) com conectores Gmail/Outlook e extração de anexos XML/PDF',
+    'Trilha completa de auditoria (audit_logs) para cada envio, reenvio ou falha',
   ],
   fieldsAndButtons: [
     {
-      name: 'Executar Agente de E-mails',
-      type: 'Botão de Ação Primária',
-      purpose: 'Dispara coleta e classificação de mensagens das caixas conectadas.',
-    },
-    {
-      name: 'Executar Identificação de Cargas',
+      name: 'Executar Agente de Envio (Etapa 4)',
       type: 'Botão de Ação Primária',
       purpose:
-        'Dispara o cruzamento multi-critério entre NF-es recebidas e ordens de carregamento (viagens) em aberto.',
+        'Dispara a varredura e o despacho imediato de documentos autorizados para os destinatários cadastrados.',
     },
     {
-      name: 'Confirmar Vínculo / Rejeitar',
-      type: 'Botões de Ação na Linha da Pendência',
+      name: 'Reenviar E-mail',
+      type: 'Botão na Linha de Log com Falha',
       purpose:
-        'Permite ao operador humano escolher a viagem correta em caso de ambiguidade ou rejeitar a associação.',
+        'Tenta realizar uma nova transmissão de um documento rejeitado pelo servidor de e-mail.',
     },
     {
-      name: 'Alternância entre Etapa 1 e Etapa 2',
-      type: 'Tabs / Abas Operacionais',
-      purpose:
-        'Permite alternar entre o histórico de e-mails recebidos e a gestão de cargas identificadas.',
+      name: 'Executar Etapa 3 (Regularização)',
+      type: 'Botão de Ação Primária',
+      purpose: 'Orquestra a esteira legal de emissão fiscal (Averbação, CIOT, CT-e e MDF-e).',
     },
     {
-      name: 'Regras e Treinamento',
-      type: 'Link de Navegação',
-      purpose:
-        'Abre a tela administrativa para configurar regras de e-mail e critérios de identificação de carga.',
+      name: 'Identificar Cargas (Etapa 2)',
+      type: 'Botão de Ação Primária',
+      purpose: 'Executa cruzamento de NF-es com ordens de carregamento cadastradas.',
+    },
+    {
+      name: 'Coletar E-mails (Etapa 1)',
+      type: 'Botão de Ação Primária',
+      purpose: 'Lê caixas conectadas e extrai anexos fiscais.',
     },
   ],
   businessRules: [
-    'Regra Crítica: A identificação NÃO depende exclusivamente da placa do veículo. O agente cruza placa, cliente, documentos, datas, motorista e peso da carga.',
-    'Regra Crítica: Quando houver divergência ou mais de uma viagem possível, o sistema NUNCA auto-vincula. Gera notificação e pendência para validação humana.',
-    'Regra de Duplicidade Fiscal: Se a chave da NF-e já possuir CT-e emitido ou autorizado, a operação é rejeitada para evitar bitributação.',
-    'O agente NUNCA executa instruções fiscais contidas no corpo de e-mails; atua estritamente sob as regras aprovadas pelo Administrador.',
-    'Prioridade 3 entregue: Etapa 3 ativa. A autorização depende da confirmação oficial da SEFAZ via API certificada (Nuvem Fiscal). Sem token, documentos são retidos na fila com status honesto.',
-    'CIOT e VPO são obrigações distintas e segregadas com coleções e fluxos separados.',
-    'MDF-e agrupa exclusivamente CT-es autorizados na SEFAZ.',
+    'Regra Inegociável: Apenas documentos AUTORIZADOS pela SEFAZ ou com protocolo de regularização oficial são enviados.',
+    'Regra Anti-Duplicidade: O mesmo documento autorizado nunca é reenviado por engano ao mesmo destinatário.',
+    'Envio via Conector do Usuário: Respeita a conta de e-mail conectada do operador autenticado.',
+    'Falha Crítica: Quando o limite de tentativas é atingido, gera notificação com o motivo exato.',
   ],
   agentsAndAutomations: [
-    'Hook email_agent.pb.js: cron periódica e endpoints /backend/v1/agents/emails/run-now, /agents/cargo/identify-now e /agents/cargo/resolve-link.',
-    'Conectores Gmail e Outlook na conta de cada usuário autenticado.',
-    'Centro de notificações (fine_notifications) acionado automaticamente em casos de divergência ou ambiguidade.',
-    'Rastreabilidade integral em audit_logs para cada identificação e aprovação humana.',
+    'Hooks PocketBase: dispatch_agent.pb.js, fiscal_regularization.pb.js e email_agent.pb.js.',
+    'Cron periódica de monitoramento e endpoints REST dedicados.',
   ],
   validations: [
-    'Verificação do mínimo de sinais coincidentes configurado antes de autorizar auto-vínculo.',
-    'Validação de formato de chave de acesso (44 dígitos) e CNPJs de emitente e destinatário.',
-    'Controle de integridade de relacionamentos entre fiscal_document_id e trips.',
+    'Validação de chave única de despacho antes de qualquer envio.',
+    'Verificação de destinatários ativos e tipos de documentos autorizados para cada perfil.',
   ],
   integrations: [
-    'Coleções PocketBase: received_fiscal_documents, cargo_identifications, cargo_agent_configs, trips, cte_documents, vehicles e drivers.',
-    'Endpoints backend seguros com autenticação Bearer.',
+    'Coleções document_dispatch_configs, document_recipients, document_dispatch_templates, document_dispatch_logs, audit_logs e fine_notifications.',
   ],
   flowsAndDependencies: [
-    'E-mail Recebido com NF-e ➔ Extração Segura de Dados Fiscais ➔ Agente de Cargas cruza com Viagens ➔ Se ≥2 sinais e único: Auto-vínculo OK ➔ Se ambíguo ou divergente: Fila de Revisão Humana.',
+    'Etapa 1 (E-mail) ➔ Etapa 2 (Carga) ➔ Etapa 3 (Autorização SEFAZ) ➔ Etapa 4 (Despacho aos Destinatários com DACTE/DAMDFE/XML).',
   ],
   dataSourceAndDestination: {
-    origin: 'Caixas de e-mail conectadas, XMLs anexados e coleção trips.',
-    destination:
-      'Coleções received_fiscal_documents, cargo_identifications, audit_logs e fine_notifications.',
-    persistence: 'Banco SQLite via PocketBase v0.36.',
+    origin: 'Documentos autorizados no banco e destinatários cadastrados.',
+    destination: 'Caixas de e-mail externas e registros em document_dispatch_logs.',
+    persistence: 'Banco Skip Cloud com auditoria persistente.',
   },
   permissions: [
-    {
-      role: 'Administrador',
-      access: 'Acesso total: disparo, aprovação/rejeição e parametrização.',
-    },
-    {
-      role: 'Gestor Operacional',
-      access: 'Acesso total: visualização, disparo e resolução de pendências.',
-    },
-    { role: 'Operador Logístico', access: 'Visualização e confirmação de vínculos operacionais.' },
-    { role: 'Financeiro', access: 'Consulta de documentos fiscais e duplicidades.' },
-    { role: 'Somente Leitura', access: 'Apenas consulta aos indicadores e logs.' },
+    { role: 'Administrador', access: 'Acesso total, configuração de regras, modelos e disparo.' },
+    { role: 'Gestor Operacional', access: 'Execução de disparos e reenvios manuais.' },
+    { role: 'Demais perfis', access: 'Visualização da Central de Agentes e histórico de envios.' },
   ],
   notificationsAndErrors: [
-    'Notificação imediata ao usuário na tela via toast em caso de sucesso ou falha das ações.',
-    'Notificação persistente no NotificationCenter para pendências de ambiguidade ou duplicidade fiscal.',
+    'Notificação automática gerada para falhas definitivas de envio.',
+    'Toasts visuais de confirmação e alerta.',
   ],
-  inDevelopmentAlert:
-    'As Etapas 1 (E-mails), 2 (Identificação de Cargas) e 3 (Documentos Emitidos & Regularização com MDF-e, CIOT e Seguros) estão 100% ativas. A Etapa 4 (Documentos enviados) está em implantação na próxima fase.',
 }
 
 export const AgentsCenterPage: React.FC = () => {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<'emails' | 'cargo' | 'emitted'>('emitted')
+  const [activeTab, setActiveTab] = useState<'emails' | 'cargo' | 'emitted' | 'dispatched'>(
+    'dispatched',
+  )
 
   // Estado Agente de E-mails
   const [emailConfig, setEmailConfig] = useState<EmailAgentConfig | null>(null)
@@ -192,6 +183,15 @@ export const AgentsCenterPage: React.FC = () => {
     Array<{ trip_code: string; stage: string; severity: string; message: string }>
   >([])
   const [fiscalProviderConfigured, setFiscalProviderConfigured] = useState<boolean>(false)
+
+  // Estado Etapa 4 (Prioridade 4: Agente de Envio Automático)
+  const [dispatchConfig, setDispatchConfig] = useState<DocumentDispatchConfig | null>(null)
+  const [dispatchLogs, setDispatchLogs] = useState<DocumentDispatchLog[]>([])
+  const [runningDispatch, setRunningDispatch] = useState(false)
+  const [retryingLogId, setRetryingLogId] = useState<string | null>(null)
+  const [dispatchFilter, setDispatchFilter] = useState<'all' | 'sent' | 'failed' | 'retry_pending'>(
+    'all',
+  )
 
   const [loading, setLoading] = useState(true)
   const [runningEmails, setRunningEmails] = useState(false)
@@ -220,20 +220,35 @@ export const AgentsCenterPage: React.FC = () => {
         await import('@/services/regularizationService')
       const { getCompanySettings } = await import('@/services/logisticsService')
 
-      const [eCfg, eLogs, cCfg, cIdents, fDocs, tripsList, ctes, mdfes, ciots, ends, comp] =
-        await Promise.all([
-          getEmailAgentConfig(),
-          getEmailProcessingLogs(100),
-          getCargoAgentConfig(),
-          getCargoIdentifications(100),
-          getReceivedFiscalDocuments(100),
-          getTrips(),
-          getCteDocuments(),
-          getMdfeDocuments(),
-          getCiotRecords(),
-          getInsuranceEndorsements(),
-          getCompanySettings(),
-        ])
+      const [
+        eCfg,
+        eLogs,
+        cCfg,
+        cIdents,
+        fDocs,
+        tripsList,
+        ctes,
+        mdfes,
+        ciots,
+        ends,
+        comp,
+        dCfg,
+        dLogs,
+      ] = await Promise.all([
+        getEmailAgentConfig(),
+        getEmailProcessingLogs(100),
+        getCargoAgentConfig(),
+        getCargoIdentifications(100),
+        getReceivedFiscalDocuments(100),
+        getTrips(),
+        getCteDocuments(),
+        getMdfeDocuments(),
+        getCiotRecords(),
+        getInsuranceEndorsements(),
+        getCompanySettings(),
+        getDocumentDispatchConfig(),
+        getDocumentDispatchLogs(100),
+      ])
       setEmailConfig(eCfg)
       setEmailLogs(eLogs)
       setCargoConfig(cCfg)
@@ -245,6 +260,8 @@ export const AgentsCenterPage: React.FC = () => {
       setCiotList(ciots)
       setEndorsementsList(ends)
       setFiscalProviderConfigured(Boolean(comp.fiscal_api_token))
+      setDispatchConfig(dCfg)
+      setDispatchLogs(dLogs)
     } catch (err) {
       console.error('Erro ao carregar dados da Central de Agentes:', err)
       toast({
@@ -254,6 +271,52 @@ export const AgentsCenterPage: React.FC = () => {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Disparo manual do Agente de Envio Automático (Etapa 4)
+  const handleRunDispatch = async () => {
+    setRunningDispatch(true)
+    try {
+      const res = await triggerDocumentDispatchRun()
+      toast({
+        title: 'Agente de Envio executado!',
+        description: res.details
+          ? `${res.details.sentCount} documentos enviados com sucesso • ${res.details.skippedDuplicate} anti-duplicações preservadas • ${res.details.errorsCount} falhas registradas.`
+          : res.message,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Falha no Agente de Envio',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setRunningDispatch(false)
+    }
+  }
+
+  // Reenvio manual específico de um log com falha
+  const handleRetryLog = async (logId: string) => {
+    setRetryingLogId(logId)
+    try {
+      const res = await retryDispatchLog(logId)
+      toast({
+        title: 'Reenvio processado!',
+        description: res.message,
+      })
+      await loadData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Falha no reenvio',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setRetryingLogId(null)
     }
   }
 
@@ -465,6 +528,30 @@ export const AgentsCenterPage: React.FC = () => {
     (c) => c.match_status === 'duplicate_detected',
   ).length
 
+  // Filtragem e Métricas da Etapa 4 (Documentos Enviados)
+  const filteredDispatchLogs = useMemo(() => {
+    return dispatchLogs.filter((log) => {
+      if (dispatchFilter === 'sent' && log.status !== 'sent') return false
+      if (dispatchFilter === 'failed' && log.status !== 'failed') return false
+      if (dispatchFilter === 'retry_pending' && log.status !== 'retry_pending') return false
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase()
+        const matchRecip = log.recipient_name.toLowerCase().includes(q)
+        const matchEmail = log.recipient_email.toLowerCase().includes(q)
+        const matchNum = log.document_number.toLowerCase().includes(q)
+        const matchTrip = (log.trip_code || '').toLowerCase().includes(q)
+        const matchSubj = log.email_subject.toLowerCase().includes(q)
+        return matchRecip || matchEmail || matchNum || matchTrip || matchSubj
+      }
+      return true
+    })
+  }, [dispatchLogs, dispatchFilter, searchTerm])
+
+  const totalDispatchedCount = dispatchLogs.filter((l) => l.status === 'sent').length
+  const failedDispatchedCount = dispatchLogs.filter((l) => l.status === 'failed').length
+  const retryPendingCount = dispatchLogs.filter((l) => l.status === 'retry_pending').length
+
   const getMatchStatusBadge = (status: string) => {
     switch (status) {
       case 'auto_matched':
@@ -517,15 +604,12 @@ export const AgentsCenterPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge className="bg-indigo-500/30 text-indigo-200 border-indigo-400/30 text-[10px] uppercase">
-              Prioridade 1 & 2 • ED Integração
+            <Badge className="bg-emerald-500/30 text-emerald-200 border-emerald-400/30 text-[10px] uppercase font-bold">
+              Prioridades 1, 2, 3 e 4 Concluídas • ED Integração
             </Badge>
             <span className="text-xs text-slate-300 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Agentes Ativos • Mínimo de Sinais:{' '}
-              <strong className="text-white">
-                {cargoConfig?.min_matching_signals || 2} coincidentes
-              </strong>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />4 Etapas Ativas
+              • Documentos Autorizados Despachados
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-extrabold mt-1 tracking-tight flex items-center gap-2">
@@ -533,8 +617,8 @@ export const AgentsCenterPage: React.FC = () => {
             Central de Agentes Autônomos
           </h1>
           <p className="text-xs md:text-sm text-slate-300 max-w-2xl mt-0.5">
-            Triagem automatizada de e-mails e identificação inteligente de cargas cruzando NF-es com
-            viagens, com proteção contra auto-vínculo ambíguo e prevenção de duplicidade fiscal.
+            Fluxo operacional completo de ponta a ponta: triagem de e-mails ➔ identificação de
+            cargas ➔ esteira legal de regularização ➔ envio automático seguro aos destinatários.
           </p>
         </div>
 
@@ -547,6 +631,25 @@ export const AgentsCenterPage: React.FC = () => {
           >
             <FileCode className="h-4 w-4 text-indigo-300" />
             Lógica da Tela
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={handleRunDispatch}
+            disabled={runningDispatch}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+          >
+            {runningDispatch ? (
+              <>
+                <RotateCw className="h-4 w-4 animate-spin" />
+                Enviando Documentos...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                Executar Etapa 4 (Envio)
+              </>
+            )}
           </Button>
 
           <Button
@@ -572,7 +675,7 @@ export const AgentsCenterPage: React.FC = () => {
             size="sm"
             onClick={handleRunCargo}
             disabled={runningCargo}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+            className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold gap-1.5 shadow-sm"
           >
             {runningCargo ? (
               <>
@@ -591,7 +694,7 @@ export const AgentsCenterPage: React.FC = () => {
             size="sm"
             onClick={handleRunEmails}
             disabled={runningEmails}
-            className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold gap-1.5 shadow-sm"
+            className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold gap-1.5 shadow-sm"
           >
             {runningEmails ? (
               <>
@@ -608,22 +711,23 @@ export const AgentsCenterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* FLUXO VISUAL EM 4 ETAPAS COM ETAPAS 1, 2 E 3 100% FUNCIONAIS */}
+      {/* FLUXO VISUAL EM 4 ETAPAS COM AS 4 ETAPAS 100% FUNCIONAIS E ATIVAS */}
       <Card className="border-slate-200 shadow-sm overflow-hidden">
         <CardHeader className="bg-slate-50/70 border-b border-slate-200/80 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-indigo-600" />
+                <Sparkles className="h-4 w-4 text-emerald-600" />
                 Fluxo Operacional de Atendimento Autônomo
               </CardTitle>
               <CardDescription className="text-xs">
                 Visão de ponta a ponta: E-mail ➔ Carga ➔ Emissão Fiscal/Regularização ➔ Envio
+                Automático
               </CardDescription>
             </div>
             <div className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-md font-medium">
-              Fase Atual: <strong className="text-emerald-700">Etapas 1, 2 e 3 Ativas</strong> •
-              Etapa 4 Em Implantação
+              Fase Atual:{' '}
+              <strong className="text-emerald-700">As 4 Etapas 100% Ativas e Integradas</strong>
             </div>
           </div>
         </CardHeader>
@@ -635,7 +739,7 @@ export const AgentsCenterPage: React.FC = () => {
               className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
                 activeTab === 'emails'
                   ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
-                  : 'border-emerald-500 bg-emerald-50/40 hover:border-emerald-600'
+                  : 'border-emerald-500 bg-emerald-50/30 hover:border-emerald-600'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
@@ -666,7 +770,7 @@ export const AgentsCenterPage: React.FC = () => {
               className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
                 activeTab === 'cargo'
                   ? 'border-indigo-600 bg-indigo-50/40 shadow-sm'
-                  : 'border-emerald-500 bg-emerald-50/40 hover:border-emerald-600'
+                  : 'border-emerald-500 bg-emerald-50/30 hover:border-emerald-600'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
@@ -691,7 +795,7 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Etapa 3: Documentos Emitidos & Regularização (NOVO: ATIVA) */}
+            {/* Etapa 3: Documentos Emitidos & Regularização (100% Funcional) */}
             <div
               onClick={() => setActiveTab('emitted')}
               className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
@@ -724,29 +828,34 @@ export const AgentsCenterPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Etapa 4: Documentos enviados (Em Implantação) */}
-            <div className="p-3.5 rounded-xl border border-slate-300 bg-slate-50/70 relative opacity-90">
+            {/* Etapa 4: Documentos enviados (PRIORIDADE 4: 100% ATIVA E FUNCIONAL) */}
+            <div
+              onClick={() => setActiveTab('dispatched')}
+              className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                activeTab === 'dispatched'
+                  ? 'border-emerald-600 bg-emerald-50/50 shadow-md ring-2 ring-emerald-500'
+                  : 'border-emerald-500 bg-emerald-50/30 hover:border-emerald-600'
+              }`}
+            >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-600 text-white uppercase tracking-wider">
-                  Etapa 4
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white uppercase tracking-wider">
+                  Etapa 4 • Ativa
                 </span>
-                <Badge
-                  variant="outline"
-                  className="border-amber-400 bg-amber-50 text-amber-800 text-[10px]"
-                >
-                  Em Implantação
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                  Agente Concluído
                 </Badge>
               </div>
-              <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
-                <ArrowRight className="h-4 w-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                <Send className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>Documentos Enviados</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Envio automatizado de DACTE e XML para tomador, motorista e embarcador com
-                confirmação de entrega.
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Envio automático a destinatários cadastrados de CT-e, MDF-e, CIOT e seguro
+                autorizados, com anti-duplicação estrita.
               </p>
-              <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-slate-400 italic">
-                Próxima fase do ED Integração
+              <div className="mt-2.5 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-800 font-semibold flex items-center justify-between">
+                <span>{totalDispatchedCount} enviados</span>
+                <span className="text-rose-700 font-bold">{failedDispatchedCount} falhas</span>
               </div>
             </div>
           </div>
@@ -837,17 +946,36 @@ export const AgentsCenterPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* ABAS OPERACIONAIS: ETAPA 3 (REGULARIZAÇÃO), ETAPA 2 (CARGAS) E ETAPA 1 (E-MAILS) */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      {/* ABAS OPERACIONAIS: ETAPA 4 (ENVIADOS), ETAPA 3 (REGULARIZAÇÃO), ETAPA 2 (CARGAS) E ETAPA 1 (E-MAILS) */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+        <Button
+          size="sm"
+          variant={activeTab === 'dispatched' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('dispatched')}
+          className={`text-xs font-bold gap-1.5 h-8 ${
+            activeTab === 'dispatched'
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+              : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50'
+          }`}
+        >
+          <Send className="h-4 w-4" />
+          <span>Etapa 4: Documentos Enviados</span>
+          <Badge
+            className={`ml-1 text-[10px] font-bold ${activeTab === 'dispatched' ? 'bg-white text-emerald-900' : 'bg-emerald-100 text-emerald-800'}`}
+          >
+            {dispatchLogs.length}
+          </Badge>
+        </Button>
+
         <Button
           size="sm"
           variant={activeTab === 'emitted' ? 'default' : 'outline'}
           onClick={() => setActiveTab('emitted')}
-          className="text-xs font-bold gap-1.5 h-8 bg-indigo-600 text-white hover:bg-indigo-700"
+          className="text-xs font-bold gap-1.5 h-8"
         >
           <Layers className="h-4 w-4" />
           <span>Etapa 3: Documentos Emitidos & Regularização</span>
-          <Badge className="ml-1 text-[10px] bg-white text-indigo-900 font-bold">
+          <Badge variant="outline" className="ml-1 text-[10px]">
             {cteList.length + mdfeList.length}
           </Badge>
         </Button>
@@ -878,6 +1006,269 @@ export const AgentsCenterPage: React.FC = () => {
           </Badge>
         </Button>
       </div>
+
+      {/* CONTEÚDO DA ABA ETAPA 4: DOCUMENTOS ENVIADOS AOS DESTINATÁRIOS (PRIORIDADE 4) */}
+      {activeTab === 'dispatched' && (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-200/80">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Send className="h-5 w-5 text-emerald-600" />
+                  <span>
+                    Rastreabilidade de Envio de Documentos ({filteredDispatchLogs.length} registros)
+                  </span>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Apenas documentos autorizados são despachados aos destinatários. Anti-duplicação e
+                  controle de retries ativos.
+                </CardDescription>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to="/email-agent-training">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs gap-1.5 h-8 border-emerald-300 text-emerald-900 bg-emerald-50/50"
+                  >
+                    <span>Configurar Agente & Destinatários</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+
+                <Button
+                  size="sm"
+                  onClick={handleRunDispatch}
+                  disabled={runningDispatch}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold gap-1.5 h-8 shadow-sm"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {runningDispatch ? 'Processando Envios...' : 'Disparar Envio Agora'}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={loadData}
+                  disabled={loading}
+                  className="h-8 w-8 p-0"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+            </div>
+
+            {/* Barra de Filtros e Busca de Envios */}
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por cliente, e-mail, número do documento ou viagem..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 text-xs h-8 bg-slate-50/50"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                <Button
+                  size="sm"
+                  variant={dispatchFilter === 'all' ? 'default' : 'outline'}
+                  onClick={() => setDispatchFilter('all')}
+                  className="text-xs h-8 px-2.5"
+                >
+                  Todos ({dispatchLogs.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dispatchFilter === 'sent' ? 'default' : 'outline'}
+                  onClick={() => setDispatchFilter('sent')}
+                  className="text-xs h-8 px-2.5 text-emerald-700 bg-emerald-50/50 border-emerald-300"
+                >
+                  Enviados ({totalDispatchedCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dispatchFilter === 'failed' ? 'default' : 'outline'}
+                  onClick={() => setDispatchFilter('failed')}
+                  className="text-xs h-8 px-2.5 text-rose-700 bg-rose-50/50 border-rose-300"
+                >
+                  Falhas ({failedDispatchedCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dispatchFilter === 'retry_pending' ? 'default' : 'outline'}
+                  onClick={() => setDispatchFilter('retry_pending')}
+                  className="text-xs h-8 px-2.5 text-amber-700 bg-amber-50/50 border-amber-300"
+                >
+                  Retry Pendente ({retryPendingCount})
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            {filteredDispatchLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                <Send className="h-8 w-8 mx-auto text-slate-300 stroke-1 mb-2" />
+                <p className="font-semibold text-slate-700">
+                  Nenhum registro de envio para o filtro selecionado.
+                </p>
+                <p className="text-slate-400 mt-0.5">
+                  Clique em &ldquo;Disparar Envio Agora&rdquo; para verificar novos documentos
+                  fiscais autorizados.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Data / Hora</th>
+                      <th className="p-3">Destinatário & Conta Emissora</th>
+                      <th className="p-3">Documento Autorizado</th>
+                      <th className="p-3">Assunto & Anexos</th>
+                      <th className="p-3">Status do Envio</th>
+                      <th className="p-3 text-right">Ação / Reenvio</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredDispatchLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 whitespace-nowrap">
+                          <div className="font-semibold text-slate-900">
+                            {log.sent_at
+                              ? new Date(log.sent_at).toLocaleTimeString('pt-BR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                })
+                              : new Date(log.created).toLocaleTimeString('pt-BR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                })}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                            Por: {log.dispatched_by || 'Agente'}
+                          </div>
+                        </td>
+
+                        <td className="p-3 max-w-xs">
+                          <div
+                            className="font-bold text-slate-900 truncate"
+                            title={log.recipient_name}
+                          >
+                            {log.recipient_name}
+                          </div>
+                          <div className="font-mono text-[11px] text-indigo-700 font-semibold truncate mt-0.5">
+                            {log.recipient_email}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Via: {log.provider_used.toUpperCase()} (
+                            {log.sender_account || 'Caixa conectada'})
+                          </div>
+                        </td>
+
+                        <td className="p-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 uppercase">
+                              {log.document_type} nº {log.document_number}
+                            </span>
+                            {log.trip_code && (
+                              <Badge variant="outline" className="text-[9px] font-mono">
+                                {log.trip_code}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-emerald-700 font-mono mt-0.5">
+                            Prot: {log.document_auth_protocol || 'AUTORIZADO-SEFAZ'}
+                          </div>
+                          <div
+                            className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[180px]"
+                            title={log.dispatch_key}
+                          >
+                            Chave anti-duplicação ativa
+                          </div>
+                        </td>
+
+                        <td className="p-3 max-w-sm">
+                          <div
+                            className="font-medium text-slate-800 text-xs truncate"
+                            title={log.email_subject}
+                          >
+                            {log.email_subject}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
+                            {log.attachments_summary || 'Arquivos fiscais anexados'}
+                          </div>
+                          {log.error_reason && (
+                            <div className="text-[10px] text-rose-700 bg-rose-50 p-1 rounded mt-1 border border-rose-200">
+                              <strong>Motivo da Falha:</strong> {log.error_reason}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="p-3 whitespace-nowrap">
+                          {log.status === 'sent' && (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] gap-1 font-semibold">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                              Enviado com Sucesso
+                            </Badge>
+                          )}
+                          {log.status === 'failed' && (
+                            <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] gap-1 font-semibold">
+                              <AlertCircle className="h-3 w-3 text-rose-600" />
+                              Falha Definitiva ({log.retry_count}/{log.max_retries})
+                            </Badge>
+                          )}
+                          {log.status === 'retry_pending' && (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] gap-1 font-semibold animate-pulse">
+                              <RotateCw className="h-3 w-3 text-amber-600" />
+                              Retry Agendado ({log.retry_count}/{log.max_retries})
+                            </Badge>
+                          )}
+                          {log.notification_sent && (
+                            <div className="text-[10px] text-amber-800 mt-1 flex items-center gap-1">
+                              <MailCheck className="h-3 w-3" />
+                              Responsável notificado
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="p-3 text-right whitespace-nowrap">
+                          {log.status === 'failed' || log.status === 'retry_pending' ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleRetryLog(log.id)}
+                              disabled={retryingLogId === log.id}
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1 h-7"
+                            >
+                              <RotateCw
+                                className={`h-3 w-3 ${retryingLogId === log.id ? 'animate-spin' : ''}`}
+                              />
+                              Reenviar Agora
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-emerald-700 font-semibold flex items-center justify-end gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              Entregue
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* CONTEÚDO DA ABA ETAPA 3: DOCUMENTOS EMITIDOS & REGULARIZAÇÃO */}
       {activeTab === 'emitted' && (

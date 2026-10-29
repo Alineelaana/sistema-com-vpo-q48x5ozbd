@@ -2,16 +2,17 @@ import { ScreenLogicDoc } from '@/components/ScreenLogicModal'
 
 export const DASHBOARD_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Dashboard de Operações Integrado',
-  screenBadge: 'Visão Geral • Prioridades 1 & 2',
+  screenBadge: 'Visão Geral • Prioridades 1, 2, 3 e 4',
   lastUpdate: '2026-10-29',
-  version: '1.2.0',
+  version: '2.0.0',
   objective:
-    'Centralizar em tempo real as métricas executivas e operacionais da transportadora: fretes, Vale Pedágio Obrigatório (Lei 10.209/01), CT-es autorizados, multas críticas com risco de bloqueio, entregas monitoradas (Fusion) e os agentes autônomos de e-mails e identificação de cargas.',
+    'Centralizar em tempo real as métricas executivas e operacionais da transportadora: fretes, Vale Pedágio Obrigatório (Lei 10.209/01), CT-es autorizados, multas críticas, entregas monitoradas e os 4 agentes autônomos (E-mails, Cargas, Regularização e Envio Automático).',
   realFeatures: [
     'Alerta crítico de multas vencidas ou com vencimento nos próximos 7 dias com acesso direto para pagamento ou recurso',
     'Indicadores financeiros: Total em fretes, VPO destacado em conformidade e CT-es autorizados',
-    'Bloco executivo dos Agentes Autônomos: status do Agente de E-mails (Etapa 1) e Agente de Cargas (Etapa 2)',
-    'Métricas em tempo real de cargas vinculadas automaticamente, pendências aguardando intervenção humana e duplicidades fiscais impedidas',
+    'Bloco executivo dos 4 Agentes Autônomos: E-mails triados (P1), Cargas vinculadas (P2), Regularização fiscal (P3) e Documentos Enviados com anti-duplicação (P4)',
+    'Métricas em tempo real de cargas vinculadas automaticamente, pendências de revisão humana e duplicidades fiscais impedidas',
+    'Métricas da Etapa 4: Documentos enviados com sucesso aos destinatários e monitoramento de falhas/retries',
     'Painel Fusion: Entregas hoje com POD, veículos em rota, ocorrências em trânsito, entregas atrasadas (SLA) e divergência de frete',
     'Listagem das últimas viagens operacionais e documentos fiscais emitidos',
   ],
