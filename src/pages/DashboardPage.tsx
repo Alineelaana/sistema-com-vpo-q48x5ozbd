@@ -20,6 +20,8 @@ import type {
   TrafficFine,
   Delivery,
 } from '@/types/logistics'
+import { getEmailAgentConfig, getEmailProcessingLogs } from '@/services/agentService'
+import type { EmailAgentConfig, EmailProcessingLog } from '@/types/agent'
 import {
   Truck,
   TrendingUp,
@@ -41,6 +43,8 @@ import {
   Radio,
   Scale,
   Navigation,
+  Bot,
+  Mail,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { VpoCalculator } from '@/components/VpoCalculator'
@@ -53,20 +57,25 @@ export const DashboardPage: React.FC = () => {
   const [company, setCompany] = useState<CompanySettings | null>(null)
   const [fines, setFines] = useState<TrafficFine[]>([])
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
+  const [agentConfig, setAgentConfig] = useState<EmailAgentConfig | null>(null)
+  const [recentAgentLogs, setRecentAgentLogs] = useState<EmailProcessingLog[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadDashboard() {
       setLoading(true)
-      const [tripsList, ctesList, vehList, drivList, comp, finesList, delList] = await Promise.all([
-        getTrips(),
-        getCteDocuments(),
-        getVehicles(),
-        getDrivers(),
-        getCompanySettings(),
-        getTrafficFines(),
-        getDeliveries(),
-      ])
+      const [tripsList, ctesList, vehList, drivList, comp, finesList, delList, cfg, agentLogs] =
+        await Promise.all([
+          getTrips(),
+          getCteDocuments(),
+          getVehicles(),
+          getDrivers(),
+          getCompanySettings(),
+          getTrafficFines(),
+          getDeliveries(),
+          getEmailAgentConfig(),
+          getEmailProcessingLogs(5),
+        ])
       setTrips(tripsList)
       setCtes(ctesList)
       setVehicles(vehList)
@@ -74,6 +83,8 @@ export const DashboardPage: React.FC = () => {
       setCompany(comp)
       setFines(finesList)
       setDeliveries(delList)
+      setAgentConfig(cfg)
+      setRecentAgentLogs(agentLogs)
       setLoading(false)
     }
     loadDashboard()
@@ -261,6 +272,144 @@ export const DashboardPage: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Bloco Resumo do Agente de E-mails com Link para a Central de Agentes */}
+      <Card className="border-indigo-200/80 bg-gradient-to-r from-indigo-50/70 via-white to-slate-50 shadow-sm overflow-hidden">
+        <CardHeader className="p-4 pb-2 border-b border-indigo-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-bold text-slate-900">
+                  Agente Autônomo de E-mails
+                </CardTitle>
+                <Badge
+                  className={
+                    agentConfig?.is_active
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]'
+                      : 'bg-slate-100 text-slate-700 border-slate-300 text-[10px]'
+                  }
+                >
+                  {agentConfig?.is_active ? 'Ativo • Monitorando' : 'Pausado'}
+                </Badge>
+              </div>
+              <CardDescription className="text-xs text-slate-500">
+                Triagem inteligente de NF-e, CT-e e anexos operacionais • Intervalo:{' '}
+                {agentConfig?.check_interval_minutes || 15} min
+              </CardDescription>
+            </div>
+          </div>
+
+          <Link to="/agents-center">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs font-semibold border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-1.5 h-8 w-full sm:w-auto"
+            >
+              <span>Abrir Central de Agentes</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </CardHeader>
+
+        <CardContent className="p-4 pt-3 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                Total Processado
+              </span>
+              <span className="text-xl font-bold text-slate-900 mt-0.5 block">
+                {agentConfig?.processed_count_total || recentAgentLogs.length}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-medium">E-mails triados</span>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                Classificados com Sucesso
+              </span>
+              <span className="text-xl font-bold text-emerald-700 mt-0.5 block">
+                {agentConfig?.auto_classified_count || 0}
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">Por regras aprovadas</span>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                Exceções / Pendências
+              </span>
+              <span className="text-xl font-bold text-amber-700 mt-0.5 block">
+                {agentConfig?.exceptions_count || 0}
+              </span>
+              <span className="text-[10px] text-amber-600 font-medium">Exigem responsável</span>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                Última Execução
+              </span>
+              <span className="text-xs font-bold text-slate-800 mt-1 block truncate">
+                {agentConfig?.last_run_at
+                  ? new Date(agentConfig.last_run_at).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      day: '2-digit',
+                      month: '2-digit',
+                    })
+                  : 'Recente'}
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium truncate block">
+                {agentConfig?.last_run_status || 'Ciclo operacional regular'}
+              </span>
+            </div>
+          </div>
+
+          {/* Últimos e-mails processados em destaque */}
+          {recentAgentLogs.length > 0 && (
+            <div className="pt-2 border-t border-slate-200/70">
+              <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Últimos e-mails triados pelo agente</span>
+                <Link
+                  to="/agents-center"
+                  className="text-indigo-600 hover:underline normal-case font-medium text-[11px]"
+                >
+                  Ver todos os registros ({recentAgentLogs.length})
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {recentAgentLogs.slice(0, 3).map((log) => (
+                  <Link
+                    key={log.id}
+                    to="/agents-center"
+                    className="p-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 transition-all flex items-center justify-between gap-2 group text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800 truncate group-hover:text-indigo-700">
+                        {log.subject}
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                        De: {log.sender}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] shrink-0 ${
+                        log.process_status === 'needs_analysis'
+                          ? 'border-amber-300 bg-amber-50 text-amber-800 font-bold'
+                          : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      }`}
+                    >
+                      {log.process_status === 'needs_analysis' ? 'Exceção' : 'OK'}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* NOVO: Bloco de Indicadores da Operação de Entregas & Auditoria (Fusion) */}
       <div className="space-y-2">

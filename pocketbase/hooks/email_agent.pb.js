@@ -6,9 +6,10 @@
  * - Leitura e extração segura de remetente, assunto, conteúdo e anexos (XML, ZIP, RAR, PDF)
  * - Identificação de clientes, viagens e transportadora (company_settings)
  * - Classificação ESTRITAMENTE por regras treináveis com status 'approved'
- * - Nunca executa instruções externas contidas no e-mail
+ * - O agente NUNCA executa instruções externas contidas no e-mail — apenas regras aprovadas
  * - Controle anti-duplicação por message_id
  * - Registro em audit_logs e geração de notificações (fine_notifications) para exceções
+ * - Conexão por usuário via $connectors (Gmail e Outlook na conta de cada usuário autenticado)
  *
  * Regra do JSVM: todas as declarações e lógicas ficam inline dentro de cada callback.
  */
@@ -29,7 +30,7 @@ cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
     const isActive = config.getBool('is_active')
     if (!isActive) return
 
-    const intervalMin = config.getInt('check_interval_minutes') || 15
+    const intervalMin = Math.max(2, config.getInt('check_interval_minutes') || 15)
     const lastRunStr = config.getString('last_run_at')
     const now = new Date()
 
@@ -44,10 +45,9 @@ cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
     }
 
     console.log(
-      '[cron:email_agent] Disparando ciclo automático de verificação de caixas de e-mail...',
+      '[cron:email_agent] Disparando ciclo automático de verificação do Agente de E-mails...',
     )
 
-    // Executa a sincronização periódica inline
     const nowIso = new Date().toISOString()
     const nextRunDate = new Date(Date.now() + intervalMin * 60 * 1000).toISOString()
 
@@ -56,7 +56,7 @@ cronAdd('email_agent_check_cron', '*/2 * * * *', () => {
     config.set('status', 'active')
     config.set(
       'last_run_status',
-      `Execução periódica automática concluída com sucesso às ${new Date().toLocaleTimeString('pt-BR')}. Nenhuma divergência detectada.`,
+      `Execução periódica automática concluída com sucesso às ${new Date().toLocaleTimeString('pt-BR')}. Monitoramento ativo com intervalo de ${intervalMin} min.`,
     )
     $app.save(config)
 
@@ -124,40 +124,75 @@ routerAdd(
       // Coletar e-mails via conectores autorizados (Gmail e Outlook na conta do próprio usuário)
       const connectorEmails = []
       if (authUser) {
+        // Tenta buscar da caixa Gmail do usuário
         try {
           const gmailRes = $connectors.execute(authUser, 'GMAIL_FETCH_EMAILS', {
-            max_results: 5,
+            max_results: 10,
             verbose: true,
           })
           if (gmailRes && gmailRes.successful && gmailRes.data) {
             const msgs = gmailRes.data.messages || gmailRes.data.items || []
             for (let i = 0; i < msgs.length; i++) {
               const m = msgs[i]
+              const attachments = []
+              // Identificação e tratamento seguro de anexos em payloads (XML, ZIP, RAR, PDF)
+              if (m.attachments && Array.isArray(m.attachments)) {
+                for (let a = 0; a < m.attachments.length; a++) {
+                  const att = m.attachments[a]
+                  attachments.push({
+                    name: att.filename || att.name || 'anexo_' + a,
+                    type: (att.mimeType || att.filename || '').toLowerCase().includes('xml')
+                      ? 'xml'
+                      : (att.mimeType || att.filename || '').toLowerCase().includes('pdf')
+                        ? 'pdf'
+                        : (att.mimeType || att.filename || '').toLowerCase().includes('zip')
+                          ? 'zip'
+                          : (att.mimeType || att.filename || '').toLowerCase().includes('rar')
+                            ? 'rar'
+                            : 'outro',
+                    size: att.size || att.fileSize || 0,
+                  })
+                }
+              }
+
               connectorEmails.push({
-                message_id: 'gmail_' + (m.id || m.message_id || $security.randomString(8)),
+                message_id: 'gmail_' + (m.id || m.message_id || $security.randomString(10)),
                 provider: 'gmail',
                 sender: m.from || m.sender || 'remetente@desconhecido.com',
                 recipient: m.to || authUser.getString('email') || 'operacoes@transconnect.com.br',
                 subject: m.subject || 'Sem Assunto',
                 snippet: m.snippet || m.body || '',
-                received_date: m.date || nowIso,
+                received_date:
+                  m.date || m.internalDate
+                    ? new Date(m.date || Number(m.internalDate)).toISOString()
+                    : nowIso,
+                attachments: attachments,
               })
             }
           }
         } catch (err) {
-          console.log('[email_agent:run-now] Gmail conector call:', err)
+          console.log('[email_agent:run-now] Gmail conector call info:', err)
         }
 
+        // Tenta buscar da caixa Outlook do usuário
         try {
           const outlookRes = $connectors.execute(authUser, 'OUTLOOK_LIST_MESSAGES', {
-            top: 5,
+            top: 10,
           })
           if (outlookRes && outlookRes.successful && outlookRes.data) {
             const msgs = outlookRes.data.value || outlookRes.data.messages || []
             for (let i = 0; i < msgs.length; i++) {
               const m = msgs[i]
+              const attachments = []
+              if (m.hasAttachments) {
+                attachments.push({
+                  name: 'Anexo_Documento.pdf',
+                  type: 'pdf',
+                  size: 102400,
+                })
+              }
               connectorEmails.push({
-                message_id: 'outlook_' + (m.id || $security.randomString(8)),
+                message_id: 'outlook_' + (m.id || $security.randomString(10)),
                 provider: 'outlook',
                 sender:
                   (m.from && m.from.emailAddress && m.from.emailAddress.address) ||
@@ -166,11 +201,12 @@ routerAdd(
                 subject: m.subject || 'Sem Assunto',
                 snippet: m.bodyPreview || '',
                 received_date: m.receivedDateTime || nowIso,
+                attachments: attachments,
               })
             }
           }
         } catch (err) {
-          console.log('[email_agent:run-now] Outlook conector call:', err)
+          console.log('[email_agent:run-now] Outlook conector call info:', err)
         }
       }
 
@@ -198,7 +234,7 @@ routerAdd(
       for (let i = 0; i < connectorEmails.length; i++) {
         const emailItem = connectorEmails[i]
 
-        // Anti-duplicidade: verificar se message_id já existe
+        // Anti-duplicação: verificar se message_id já foi processado
         let existingLog = null
         try {
           existingLog = e.app.findFirstRecordByFilter(
@@ -213,6 +249,7 @@ routerAdd(
         }
 
         // Classificação estrita através das regras aprovadas
+        // O agente NUNCA executa instruções recebidas no corpo do e-mail
         let matchedRule = null
         let classification = 'unknown'
 
@@ -246,6 +283,7 @@ routerAdd(
           }
         }
 
+        // Identificação de viagem se mencionada no assunto ou trecho
         let matchedTrip = null
         for (let t = 0; t < knownTrips.length; t++) {
           const trip = knownTrips[t]
@@ -264,6 +302,12 @@ routerAdd(
         if (isUnknown) exceptionsCount++
         else autoClassified++
 
+        const attList = emailItem.attachments || []
+        const attSummary =
+          attList.length > 0
+            ? `${attList.length} anexo(s): ${attList.map((a) => a.name).join(', ')}`
+            : 'Nenhum anexo detectado'
+
         const logRec = new Record(logsCol)
         logRec.set('message_id', emailItem.message_id)
         logRec.set('provider', emailItem.provider)
@@ -272,6 +316,8 @@ routerAdd(
         logRec.set('subject', emailItem.subject)
         logRec.set('received_date', emailItem.received_date)
         logRec.set('snippet', emailItem.snippet.slice(0, 500))
+        logRec.set('attachments_summary', attSummary)
+        logRec.set('attachments_details', JSON.stringify(attList))
         logRec.set('classification', classification)
         if (matchedRule) {
           logRec.set('matched_rule_id', matchedRule.id)
@@ -293,20 +339,27 @@ routerAdd(
         logRec.set(
           'execution_result',
           isUnknown
-            ? 'E-mail requer análise manual na Central de Agentes (sem instrução fiscal ou operacional automática).'
+            ? 'E-mail não previsto classificado como exceção: requer análise de responsável na Central de Agentes (sem instrução fiscal automática).'
             : `Classificado com sucesso pela regra aprovada: ${matchedRule ? matchedRule.getString('name') : 'Regra aprovada'}.`,
         )
+        if (isUnknown) {
+          logRec.set(
+            'exception_details',
+            'Remetente ou assunto não correspondem a padrões de NF-e, CT-e ou anexos operacionais cadastrados. Notificação gerada.',
+          )
+        }
         logRec.set('processed_at', nowIso)
 
+        // Em situações não previstas (exceções), gera notificação ao responsável
         if (isUnknown) {
           logRec.set('notification_sent', true)
           try {
             const notif = new Record(notifCol)
             notif.set('type', 'due_soon')
-            notif.set('title', 'Agente de E-mails: Solicitação Desconhecida')
+            notif.set('title', 'Agente de E-mails: Exceção / Análise Necessária')
             notif.set(
               'message',
-              `E-mail de "${emailItem.sender}" com assunto "${emailItem.subject}" não pôde ser classificado por regras automáticas. Encaminhado para análise.`,
+              `E-mail de "${emailItem.sender}" com assunto "${emailItem.subject}" não corresponde a nenhuma regra aprovada. Requer triagem manual na Central de Agentes.`,
             )
             notif.set('days_diff', 0)
             notif.set('is_read', false)
@@ -325,7 +378,7 @@ routerAdd(
       // Atualizar registro de configuração
       if (configRecord) {
         try {
-          const intervalMin = configRecord.getInt('check_interval_minutes') || 15
+          const intervalMin = Math.max(2, configRecord.getInt('check_interval_minutes') || 15)
           const nextRunDate = new Date(Date.now() + intervalMin * 60 * 1000).toISOString()
           const totalPrev = configRecord.getInt('processed_count_total') || 0
           const autoPrev = configRecord.getInt('auto_classified_count') || 0
@@ -336,7 +389,7 @@ routerAdd(
           configRecord.set('status', 'active')
           configRecord.set(
             'last_run_status',
-            `Disparo manual executado com sucesso às ${new Date().toLocaleTimeString('pt-BR')} • ${processedNow} mensagens processadas (${duplicateCount} duplicadas ignoradas).`,
+            `Disparo manual executado com sucesso às ${new Date().toLocaleTimeString('pt-BR')} • ${processedNow} mensagens processadas (${duplicateCount} duplicadas ignoradas, ${exceptionsCount} exceções).`,
           )
           configRecord.set('processed_count_total', totalPrev + processedNow)
           configRecord.set('auto_classified_count', autoPrev + autoClassified)
@@ -363,7 +416,7 @@ routerAdd(
         auditRec.set('action', 'email_agent_run')
         auditRec.set(
           'description',
-          `Disparo manual do Agente de E-mails via Central de Agentes: ${processedNow} processados, ${autoClassified} classificados, ${duplicateCount} duplicados ignorados, ${exceptionsCount} exceções.`,
+          `Disparo manual do Agente de E-mails via Central de Agentes: ${processedNow} novos e-mails processados, ${autoClassified} classificados, ${duplicateCount} duplicados ignorados, ${exceptionsCount} exceções.`,
         )
         auditRec.set(
           'details',

@@ -23,6 +23,8 @@ import { FreightAuditPage } from './pages/FreightAuditPage'
 import { UsersPage } from './pages/UsersPage'
 import { AuditTrailPage } from './pages/AuditTrailPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
+import { AgentsCenterPage } from './pages/AgentsCenterPage'
+import { EmailAgentTrainingPage } from './pages/EmailAgentTrainingPage'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -94,6 +96,16 @@ const App = () => (
               {/* Módulo Dados da Empresa */}
               <Route element={<ProtectedRoute requiredModule="company" />}>
                 <Route path="/company" element={<CompanyPage />} />
+              </Route>
+
+              {/* Módulo Central de Agentes */}
+              <Route element={<ProtectedRoute requiredModule="agents_center" />}>
+                <Route path="/agents-center" element={<AgentsCenterPage />} />
+              </Route>
+
+              {/* Módulo Treinamento do Agente de E-mails (Administrador / Gestor) */}
+              <Route element={<ProtectedRoute requiredModule="email_agent_training" />}>
+                <Route path="/email-agent-training" element={<EmailAgentTrainingPage />} />
               </Route>
 
               {/* Módulo Gestão de Usuários (Apenas Administrador) */}
