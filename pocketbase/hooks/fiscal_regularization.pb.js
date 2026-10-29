@@ -197,15 +197,20 @@ routerAdd('POST', '/backend/v1/regularization/cte/transmit', (e) => {
   try {
     const auditCol = $app.findCollectionByNameOrId('audit_logs')
     const log = new Record(auditCol)
-    log.set('action', 'email_agent_run')
+    log.set('action', 'cte_transmit')
     log.set('actor_name', e.auth ? e.auth.get('name') : 'Sistema / Agente Regularização')
+    log.set('actor_email', e.auth ? e.auth.get('email') : 'sistema@transconnect.com.br')
+    if (e.auth) log.set('actor_id', e.auth.id)
     log.set('description', `Transmissão CT-e nº ${cte.get('cte_number')}: status=${result.status}`)
-    log.set('details', {
-      cte_id: cte.id,
-      result_status: result.status,
-      message: result.message,
-      isConfigured: result.isConfigured,
-    })
+    log.set(
+      'details',
+      JSON.stringify({
+        cte_id: cte.id,
+        result_status: result.status,
+        message: result.message,
+        isConfigured: result.isConfigured,
+      }),
+    )
     $app.save(log)
   } catch (_) {}
 
@@ -355,6 +360,29 @@ routerAdd('POST', '/backend/v1/regularization/mdfe/transmit', (e) => {
   if (result.xml) mdfe.set('xml_content', result.xml)
   if (result.status === 'authorized') mdfe.set('issued_at', new Date().toISOString())
   $app.save(mdfe)
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const log = new Record(auditCol)
+    log.set('action', 'mdfe_transmit')
+    log.set('actor_name', e.auth ? e.auth.get('name') : 'Sistema / Agente Regularização')
+    log.set('actor_email', e.auth ? e.auth.get('email') : 'sistema@transconnect.com.br')
+    if (e.auth) log.set('actor_id', e.auth.id)
+    log.set(
+      'description',
+      `Transmissão MDF-e nº ${mdfe.get('mdfe_number')}: status=${result.status}`,
+    )
+    log.set(
+      'details',
+      JSON.stringify({
+        mdfe_id: mdfe.id,
+        result_status: result.status,
+        message: result.message,
+        isConfigured: result.isConfigured,
+      }),
+    )
+    $app.save(log)
+  } catch (_) {}
 
   return e.json(200, {
     success: result.success,
@@ -587,6 +615,31 @@ routerAdd('POST', '/backend/v1/regularization/orchestrate', (e) => {
       }
     }
   }
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const log = new Record(auditCol)
+    log.set('action', 'regularization_orchestrate')
+    log.set('actor_name', e.auth ? e.auth.get('name') : 'Sistema / Agente Regularização')
+    log.set('actor_email', e.auth ? e.auth.get('email') : 'sistema@transconnect.com.br')
+    if (e.auth) log.set('actor_id', e.auth.id)
+    log.set(
+      'description',
+      `Orquestração Etapa 3 executada: ${processedTrips} viagens, ${ctesCreatedOrChecked} CT-es, ${ciotsCreatedOrChecked} CIOTs, ${endorsementsCreatedOrChecked} averbações, ${mdfesCreatedOrChecked} MDF-es.`,
+    )
+    log.set(
+      'details',
+      JSON.stringify({
+        processedTrips,
+        ctesCreatedOrChecked,
+        ciotsCreatedOrChecked,
+        endorsementsCreatedOrChecked,
+        mdfesCreatedOrChecked,
+        pendingIssuesCount: pendingIssues.length,
+      }),
+    )
+    $app.save(log)
+  } catch (_) {}
 
   return e.json(200, {
     success: true,

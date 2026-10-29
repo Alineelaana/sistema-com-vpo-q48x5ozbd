@@ -58,6 +58,7 @@ import {
   Receipt,
   Layers,
   ShieldAlert,
+  XCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
@@ -68,15 +69,15 @@ const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   lastUpdate: '2026-10-29',
   version: '1.1.0',
   objective:
-    'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Com a entrega da Prioridade 2, as Etapas 1 (Agente de E-mails) e 2 (Agente de Identificação de Cargas) estão 100% ativas com dados reais. O agente cruza de forma segura NF-e com viagens, bloqueia auto-vínculo quando há ambiguidade ou divergência e impede duplicidade fiscal. Etapas 3 e 4 permanecem transparentemente em implantação.',
+    'Painel operacional unificado para visualização do fluxo de trabalho autônomo (E-mail recebido → Carga identificada → Documentos emitidos → Documentos enviados). Com a entrega das Prioridades 1, 2 e 3, as Etapas 1 (Agente de E-mails), 2 (Agente de Identificação de Cargas) e 3 (Documentos Emitidos / Regularização Fiscal com MDF-e, CIOT e Seguros) estão 100% ativas com dados e integrações reais. Sem credenciais cadastradas, os documentos permanecem com status honesto (aguardando transmissão/fila) sem qualquer simulação de autorização. A Etapa 4 (Documentos enviados) permanece transparentemente em implantação.',
   realFeatures: [
     'Fluxo visual em 4 etapas detalhando o status real: Etapas 1, 2 e 3 100% ativas com dados e APIs reais; Etapa 4 em implantação',
-    'Etapa 3 ativa: Orquestração de regularização fiscal legal (Averbação RCTR-C ➔ CIOT IPEF ➔ VPO ➔ CT-e SEFAZ ➔ MDF-e)',
+    'Etapa 3 100% ativa: Orquestração de regularização fiscal legal (Averbação RCTR-C ➔ CIOT IPEF ➔ VPO ➔ CT-e SEFAZ ➔ MDF-e) via hook de backend fiscal_regularization.pb.js',
     'Transmissão certificada via Nuvem Fiscal no backend com chave segura; interface preparada para Focus NFe e TecnoSpeed',
     'Tratamento honesto de status fiscal: documentos sem credenciais permanecem retidos na fila como aguardando transmissão — nunca simulados',
     'Agente de Identificação de Cargas com cruzamento multi-sinal e bloqueio contra duplicidade fiscal',
     'Resolução manual de pendências pelo responsável: confirmação da viagem correta ou rejeição justificada com registro em audit_logs',
-    'Indicadores em tempo real para ambas as etapas: e-mails triados, cargas identificadas automaticamente, pendências aguardando humano e duplicidades bloqueadas',
+    'Indicadores em tempo real para as três etapas: e-mails triados, cargas vinculadas, pendências aguardando humano, CT-es na esteira, manifestos MDF-e, CIOTs ANTT e averbações de apólices',
     'Filtros por status, busca por remetente, NF-e, placa ou viagem',
     'Visualização de sinais coincidentes confirmados pelo agente e motivos de divergência',
   ],
@@ -162,7 +163,7 @@ const CENTRAL_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Notificação persistente no NotificationCenter para pendências de ambiguidade ou duplicidade fiscal.',
   ],
   inDevelopmentAlert:
-    'As Etapas 1 (E-mails) e 2 (Identificação de Cargas) estão 100% ativas nesta versão. As Etapas 3 (Documentos emitidos com CT-e/VPO) e 4 (Documentos enviados) serão entregues na Prioridade 3.',
+    'As Etapas 1 (E-mails), 2 (Identificação de Cargas) e 3 (Documentos Emitidos & Regularização com MDF-e, CIOT e Seguros) estão 100% ativas. A Etapa 4 (Documentos enviados) está em implantação na próxima fase.',
 }
 
 export const AgentsCenterPage: React.FC = () => {
@@ -986,134 +987,356 @@ export const AgentsCenterPage: React.FC = () => {
             </Card>
           </div>
 
-          {/* Tabela de Documentos Fiscais na Esteira */}
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-sm font-bold text-slate-900">
-                  Documentos Fiscais (CT-e) Gerados pela Esteira
+          {/* Alertas e Pendências da Orquestração */}
+          {regularizationIssues.length > 0 && (
+            <Card className="border-amber-300 bg-amber-50/40 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-bold text-amber-900 flex items-center gap-1.5 uppercase tracking-wide">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  Pendências Detectadas na Esteira Legal ({regularizationIssues.length})
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Montagem automática a partir de viagens com NF-e e destaque legal do VPO
+                <CardDescription className="text-xs text-amber-800">
+                  Salvaguardas ativas: obrigações que exigem atenção operacional antes do despacho
+                  da carga
                 </CardDescription>
-              </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2">
+                  {regularizationIssues.map((issue, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 bg-white border border-amber-200 rounded-lg flex items-start justify-between gap-2 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                            {issue.trip_code}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={`text-[9px] uppercase font-bold ${
+                              issue.severity === 'bloqueio'
+                                ? 'bg-rose-50 text-rose-700 border-rose-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                            }`}
+                          >
+                            {issue.stage} • {issue.severity}
+                          </Badge>
+                        </div>
+                        <p className="text-slate-700 text-xs">{issue.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-              <div className="flex gap-2">
+          {/* Grid de Tabelas: CT-e, MDF-e, CIOT e Averbações */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Tabela CT-e */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-indigo-600" />
+                    <span>Conhecimentos (CT-e)</span>
+                    <Badge variant="outline" className="text-xs">
+                      {cteList.length}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    CT-es gerados com destaque do VPO
+                  </CardDescription>
+                </div>
                 <Link to="/cte">
                   <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
-                    Ver Módulo CT-e
+                    Ver Módulo
                     <ExternalLink className="h-3 w-3" />
                   </Button>
                 </Link>
-                <Link to="/mdfe">
-                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
-                    Ver Módulo MDF-e
-                    <ExternalLink className="h-3 w-3" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
-                    <tr>
-                      <th className="p-3">CT-e / Série</th>
-                      <th className="p-3">Remetente ➔ Destinatário</th>
-                      <th className="p-3">Valor Carga & Frete</th>
-                      <th className="p-3">VPO Destacado</th>
-                      <th className="p-3">Status Fiscal</th>
-                      <th className="p-3 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {cteList.length === 0 ? (
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
                       <tr>
-                        <td colSpan={6} className="p-6 text-center text-slate-500 text-xs">
-                          Nenhum CT-e gerado na esteira ainda. Clique em "Executar Etapa 3" para
-                          orquestrar as viagens prontas.
-                        </td>
+                        <th className="p-2.5">CT-e / Série</th>
+                        <th className="p-2.5">Destinatário</th>
+                        <th className="p-2.5">Valor Frete</th>
+                        <th className="p-2.5">Status</th>
                       </tr>
-                    ) : (
-                      cteList.slice(0, 5).map((cte) => (
-                        <tr key={cte.id} className="hover:bg-slate-50/80">
-                          <td className="p-3 font-mono font-bold text-slate-900">
-                            CT-e nº {cte.cte_number}
-                            <div className="text-[10px] text-slate-400 font-normal">
-                              Série {cte.series}
-                            </div>
-                          </td>
-                          <td className="p-3 max-w-xs">
-                            <div className="font-semibold text-slate-800 truncate">
-                              {cte.sender_name}
-                            </div>
-                            <div className="text-[10px] text-slate-500 truncate">
-                              ➔ {cte.recipient_name}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="font-bold text-slate-800">
-                              {cte.total_cte_value.toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              Carga:{' '}
-                              {(cte.cargo_value || 0).toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            {cte.vpo_included ? (
-                              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                R$ {(cte.vpo_value || 0).toFixed(2)}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">Não destacado</span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            {cte.status === 'authorized' && (
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1 text-[10px]">
-                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                                Autorizado SEFAZ
-                              </Badge>
-                            )}
-                            {cte.status === 'pending' && (
-                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 gap-1 text-[10px]">
-                                <Clock className="h-3 w-3 text-amber-600" />
-                                Aguardando Transmissão
-                              </Badge>
-                            )}
-                            {cte.status === 'rejected' && (
-                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 gap-1 text-[10px]">
-                                <XCircle className="h-3 w-3 text-rose-600" />
-                                Rejeitado
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="p-3 text-right">
-                            <Link to="/cte">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-xs h-7 text-indigo-600"
-                              >
-                                Detalhes DACTE
-                              </Button>
-                            </Link>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {cteList.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-slate-500 text-xs">
+                            Nenhum CT-e gerado na esteira ainda.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                      ) : (
+                        cteList.slice(0, 4).map((cte) => (
+                          <tr key={cte.id} className="hover:bg-slate-50/80">
+                            <td className="p-2.5 font-mono font-bold text-slate-900">
+                              CT-e {cte.cte_number}
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Série {cte.series}
+                              </div>
+                            </td>
+                            <td className="p-2.5 max-w-[140px] truncate" title={cte.recipient_name}>
+                              {cte.recipient_name}
+                            </td>
+                            <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">
+                              {(cte.total_cte_value || cte.freight_value || 0).toLocaleString(
+                                'pt-BR',
+                                {
+                                  style: 'currency',
+                                  currency: 'BRL',
+                                },
+                              )}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              {cte.status === 'authorized' ? (
+                                <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">
+                                  Autorizado
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-100 text-amber-800 text-[10px]">
+                                  Aguardando
+                                </Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabela MDF-e */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-indigo-600" />
+                    <span>Manifestos (MDF-e)</span>
+                    <Badge variant="outline" className="text-xs">
+                      {mdfeList.length}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Consolidação interestadual (Modelo 58)
+                  </CardDescription>
+                </div>
+                <Link to="/mdfe">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+                    Ver Módulo
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
+                      <tr>
+                        <th className="p-2.5">MDF-e / Série</th>
+                        <th className="p-2.5">Rota UFs</th>
+                        <th className="p-2.5">CT-es Vinculados</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {mdfeList.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-slate-500 text-xs">
+                            Nenhum manifesto gerado ainda.
+                          </td>
+                        </tr>
+                      ) : (
+                        mdfeList.slice(0, 4).map((m) => (
+                          <tr key={m.id} className="hover:bg-slate-50/80">
+                            <td className="p-2.5 font-mono font-bold text-slate-900">
+                              MDF-e {m.mdfe_number}
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Série {m.series}
+                              </div>
+                            </td>
+                            <td className="p-2.5 font-semibold text-slate-800">
+                              {m.uf_origin} ➔ {m.uf_destination}
+                            </td>
+                            <td className="p-2.5 text-slate-600 font-mono text-[11px]">
+                              {m.linked_cte_numbers || 'CT-es da Viagem'}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              <Badge variant="outline" className="text-[10px] uppercase font-bold">
+                                {m.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabela CIOT */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-indigo-600" />
+                    <span>CIOT (ANTT / IPEF)</span>
+                    <Badge variant="outline" className="text-xs">
+                      {ciotList.length}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Remuneração obrigatória do frete (Res. 5.862/2019)
+                  </CardDescription>
+                </div>
+                <Link to="/ciot">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+                    Ver Módulo
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
+                      <tr>
+                        <th className="p-2.5">Viagem / CIOT</th>
+                        <th className="p-2.5">Perfil</th>
+                        <th className="p-2.5">Provedor IPEF</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ciotList.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-slate-500 text-xs">
+                            Nenhum registro de CIOT na esteira.
+                          </td>
+                        </tr>
+                      ) : (
+                        ciotList.slice(0, 4).map((c) => (
+                          <tr key={c.id} className="hover:bg-slate-50/80">
+                            <td className="p-2.5 font-mono font-bold text-slate-900">
+                              {c.trip_code || 'Viagem'}
+                              <div className="text-[10px] text-slate-500 font-normal">
+                                {c.ciot_number || 'Código a emitir'}
+                              </div>
+                            </td>
+                            <td className="p-2.5 uppercase font-medium text-slate-700 text-[10px]">
+                              {c.carrier_profile}
+                            </td>
+                            <td className="p-2.5 text-slate-600 truncate max-w-[130px]">
+                              {c.institution_provider || 'IPEF'}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              <Badge
+                                className={`text-[10px] ${
+                                  c.status === 'registered'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {c.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabela Averbações Seguros */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-indigo-600" />
+                    <span>Averbações RCTR-C</span>
+                    <Badge variant="outline" className="text-xs">
+                      {endorsementsList.length}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Dossiês de averbação obrigatória (Lei 14.599/2023)
+                  </CardDescription>
+                </div>
+                <Link to="/seguros">
+                  <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+                    Ver Módulo
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b">
+                      <tr>
+                        <th className="p-2.5">Dossiê / Viagem</th>
+                        <th className="p-2.5">Valor Declarado</th>
+                        <th className="p-2.5">Protocolo</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {endorsementsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-slate-500 text-xs">
+                            Nenhum dossiê de seguro na esteira.
+                          </td>
+                        </tr>
+                      ) : (
+                        endorsementsList.slice(0, 4).map((e) => (
+                          <tr key={e.id} className="hover:bg-slate-50/80">
+                            <td className="p-2.5 font-mono font-bold text-slate-900">
+                              Dossiê #{e.id.slice(0, 6)}
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                {e.is_mandatory ? 'RCTR-C Obrigatório' : 'Facultativo'}
+                              </div>
+                            </td>
+                            <td className="p-2.5 font-semibold text-slate-800">
+                              {(e.declared_cargo_value || 0).toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}
+                            </td>
+                            <td className="p-2.5 font-mono text-[10px] text-slate-600">
+                              {e.endorsement_protocol || 'Aguardando AT&M'}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              <Badge
+                                className={`text-[10px] ${
+                                  e.status === 'averbada'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {e.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T02:00:56.419Z",
+  "generatedAt": "2026-10-29T15:05:32.060Z",
   "collections": [
     {
       "name": "users",
@@ -715,6 +715,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "xml_content",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_cte_number ON cte_documents (cte_number, series)"]
@@ -1328,10 +1334,17 @@
             "email_agent_rule_approve",
             "email_agent_rule_reject",
             "cargo_agent_run",
-            "cargo_agent_config",
             "cargo_link_confirm",
             "cargo_link_reject",
-            "cargo_link_manual"
+            "regularization_orchestrate",
+            "cte_transmit",
+            "mdfe_transmit",
+            "mdfe_close",
+            "mdfe_cancel",
+            "ciot_create",
+            "ciot_update",
+            "insurance_endorsement_create",
+            "insurance_endorsement_update"
           ]
         },
         {

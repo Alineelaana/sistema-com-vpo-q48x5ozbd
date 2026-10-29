@@ -180,6 +180,18 @@ export type AuditAction =
   | 'email_agent_rule_update'
   | 'email_agent_rule_approve'
   | 'email_agent_rule_reject'
+  | 'cargo_agent_run'
+  | 'cargo_link_confirm'
+  | 'cargo_link_reject'
+  | 'regularization_orchestrate'
+  | 'cte_transmit'
+  | 'mdfe_transmit'
+  | 'mdfe_close'
+  | 'mdfe_cancel'
+  | 'ciot_create'
+  | 'ciot_update'
+  | 'insurance_endorsement_create'
+  | 'insurance_endorsement_update'
 
 export interface AuditLog {
   id: string
@@ -258,6 +270,54 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, { label: string; badge: st
   email_agent_rule_reject: {
     label: 'Rejeição de Regra',
     badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  },
+  cargo_agent_run: {
+    label: 'Execução Agente de Cargas',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  cargo_link_confirm: {
+    label: 'Vínculo de Carga Confirmado',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  cargo_link_reject: {
+    label: 'Vínculo de Carga Rejeitado',
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  },
+  regularization_orchestrate: {
+    label: 'Orquestração Etapa 3',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  cte_transmit: {
+    label: 'Transmissão de CT-e',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  mdfe_transmit: {
+    label: 'Transmissão de MDF-e',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  mdfe_close: {
+    label: 'Encerramento de MDF-e',
+    badge: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
+  },
+  mdfe_cancel: {
+    label: 'Cancelamento de MDF-e',
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  },
+  ciot_create: {
+    label: 'Cadastro de CIOT',
+    badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  ciot_update: {
+    label: 'Atualização de CIOT',
+    badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  insurance_endorsement_create: {
+    label: 'Averbação de Seguro',
+    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
+  insurance_endorsement_update: {
+    label: 'Atualização de Averbação',
+    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   },
 }
 

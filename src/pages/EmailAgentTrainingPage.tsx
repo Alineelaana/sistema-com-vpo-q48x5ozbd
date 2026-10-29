@@ -52,6 +52,9 @@ import {
   Hash,
   AlertTriangle,
   RotateCw,
+  Receipt,
+  ShieldAlert,
+  Layers,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 

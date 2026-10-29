@@ -57,16 +57,16 @@ export async function logAuditEvent(params: {
     const ua = getUserAgent()
 
     const record = await pb.collection('audit_logs').create<AuditLog>({
-      actor_id: actorId || null,
-      actor_name: actorName,
-      actor_email: actorEmail,
+      actor_id: actorId || '',
+      actor_name: actorName || 'Sistema',
+      actor_email: actorEmail || 'sistema@transconnect.com.br',
       action: params.action,
       target_user_id: params.target_user_id || '',
       target_user_email: params.target_user_email || '',
-      description: params.description,
+      description: params.description || '',
       details: params.details || {},
-      ip_address: ip,
-      user_agent: ua,
+      ip_address: ip && ip !== 'unknown' ? ip : '',
+      user_agent: ua && ua !== 'unknown' ? ua : '',
     })
     return record
   } catch (err) {
