@@ -237,7 +237,6 @@ const NAV_SECTIONS: NavSectionDef[] = [
 ]
 
 const STORAGE_COLLAPSED_KEY = 'ed_sidebar_collapsed_v1'
-const STORAGE_OPEN_SECTIONS_KEY = 'ed_sidebar_open_sections_v1'
 
 export default function Layout() {
   const { user, currentUser, role, roleConfig, hasPermission, logout, mustChangePasswordPending } =
@@ -260,26 +259,9 @@ export default function Layout() {
     }
   })
 
-  // Estado de seções abertas/fechadas com persistência
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_OPEN_SECTIONS_KEY)
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch {
-      // fallback
-    }
-    // Por padrão, todas as seções iniciam abertas
-    return {
-      visao_geral: true,
-      operacao: true,
-      fiscal: true,
-      cadastros: true,
-      gestao: true,
-      administracao: true,
-    }
-  })
+  // Estado de seção aberta: sanfona exclusiva (apenas uma seção aberta por vez ou nenhuma).
+  // Por padrão, todos os grupos iniciam FECHADOS ao carregar o sistema.
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
   // Salva no localStorage quando o usuário alternar recolher/expandir
   const toggleCollapse = () => {
@@ -294,17 +276,11 @@ export default function Layout() {
     })
   }
 
-  // Alterna o estado de uma seção
+  // Alterna a seção no modo sanfona exclusivo:
+  // Se clicar na que já está aberta, fecha.
+  // Se clicar em outra, abre apenas ela e fecha as outras.
   const toggleSection = (sectionId: string) => {
-    setOpenSections((prev) => {
-      const next = { ...prev, [sectionId]: !prev[sectionId] }
-      try {
-        localStorage.setItem(STORAGE_OPEN_SECTIONS_KEY, JSON.stringify(next))
-      } catch {
-        // ignore
-      }
-      return next
-    })
+    setActiveSectionId((current) => (current === sectionId ? null : sectionId))
   }
 
   // Avatar URL helper
@@ -379,40 +355,10 @@ export default function Layout() {
     return processedSections.reduce((acc, sec) => acc + sec.items.length, 0)
   }, [processedSections])
 
-  // Identifica a seção onde está a rota atual para garantir que ela fique aberta
-  useEffect(() => {
-    const currentPath = location.pathname
-    for (const sec of NAV_SECTIONS) {
-      const hasActive = sec.items.some((item) => {
-        if (item.to === '/') return currentPath === '/'
-        return currentPath.startsWith(item.to)
-      })
-      if (hasActive) {
-        setOpenSections((prev) => {
-          if (prev[sec.id]) return prev
-          const next = { ...prev, [sec.id]: true }
-          try {
-            localStorage.setItem(STORAGE_OPEN_SECTIONS_KEY, JSON.stringify(next))
-          } catch {
-            // ignore
-          }
-          return next
-        })
-        break
-      }
-    }
-  }, [location.pathname])
-
-  // Abre automaticamente as seções quando o usuário digita na busca
-  useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      const openAll: Record<string, boolean> = {}
-      for (const sec of processedSections) {
-        openAll[sec.id] = true
-      }
-      setOpenSections((prev) => ({ ...prev, ...openAll }))
-    }
-  }, [searchQuery, processedSections])
+  // Exceção obrigatória da busca:
+  // Quando há busca ativa, todos os grupos com resultados ficam abertos/expandidos automaticamente.
+  // Quando a busca é limpa, volta ao estado sanfona normal (activeSectionId).
+  const isSearching = searchQuery.trim().length > 0
 
   // Renderiza um NavItem no modo recolhido (ícone + tooltip)
   const renderCollapsedItem = (item: NavItemDef) => {
@@ -629,7 +575,7 @@ export default function Layout() {
           ) : (
             processedSections.map((section) => {
               const SectionIcon = section.icon
-              const isOpen = openSections[section.id] ?? true
+              const isOpen = isSearching ? true : activeSectionId === section.id
               const hasActiveChild = section.items.some((item) =>
                 item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to),
               )
