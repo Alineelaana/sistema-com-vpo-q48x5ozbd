@@ -37,6 +37,8 @@ export type AppModule =
   | 'drivers'
   | 'fines'
   | 'company'
+  | 'agents_center'
+  | 'email_agent_training'
   | 'users'
   | 'audit'
   | 'privacy_policy'
@@ -70,6 +72,8 @@ export const USER_ROLES_CONFIG: Record<UserRole, RoleConfig> = {
       'drivers',
       'fines',
       'company',
+      'agents_center',
+      'email_agent_training',
       'users',
       'audit',
       'privacy_policy',
@@ -94,6 +98,8 @@ export const USER_ROLES_CONFIG: Record<UserRole, RoleConfig> = {
       'drivers',
       'fines',
       'company',
+      'agents_center',
+      'email_agent_training',
       'privacy_policy',
     ],
     canViewValues: true,
@@ -112,6 +118,7 @@ export const USER_ROLES_CONFIG: Record<UserRole, RoleConfig> = {
       'fines',
       'trips',
       'company',
+      'agents_center',
       'privacy_policy',
     ],
     canViewValues: true,
@@ -130,6 +137,7 @@ export const USER_ROLES_CONFIG: Record<UserRole, RoleConfig> = {
       'trips',
       'vehicles',
       'drivers',
+      'agents_center',
       'privacy_policy',
     ],
     canViewValues: false,
@@ -148,6 +156,7 @@ export const USER_ROLES_CONFIG: Record<UserRole, RoleConfig> = {
       'vehicles',
       'drivers',
       'fines',
+      'agents_center',
       'privacy_policy',
     ],
     canViewValues: true,
@@ -165,6 +174,12 @@ export type AuditAction =
   | 'export_user_data'
   | 'privacy_consent'
   | 'password_change'
+  | 'email_agent_run'
+  | 'email_agent_config'
+  | 'email_agent_rule_create'
+  | 'email_agent_rule_update'
+  | 'email_agent_rule_approve'
+  | 'email_agent_rule_reject'
 
 export interface AuditLog {
   id: string
@@ -219,6 +234,30 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, { label: string; badge: st
   password_change: {
     label: 'Alteração de Senha',
     badge: 'bg-violet-500/10 text-violet-400 border-violet-500/30',
+  },
+  email_agent_run: {
+    label: 'Execução Agente de E-mails',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  email_agent_config: {
+    label: 'Configuração do Agente',
+    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
+  email_agent_rule_create: {
+    label: 'Criação de Regra',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  email_agent_rule_update: {
+    label: 'Atualização de Regra',
+    badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  },
+  email_agent_rule_approve: {
+    label: 'Aprovação de Regra (Admin)',
+    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  },
+  email_agent_rule_reject: {
+    label: 'Rejeição de Regra',
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
   },
 }
 

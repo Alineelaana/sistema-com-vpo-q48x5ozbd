@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T00:43:44.625Z",
+  "generatedAt": "2026-10-29T01:15:40.168Z",
   "collections": [
     {
       "name": "users",
@@ -1276,7 +1276,13 @@
             "anonymize_user",
             "export_user_data",
             "privacy_consent",
-            "password_change"
+            "password_change",
+            "email_agent_run",
+            "email_agent_config",
+            "email_agent_rule_create",
+            "email_agent_rule_update",
+            "email_agent_rule_approve",
+            "email_agent_rule_reject"
           ]
         },
         {
@@ -1335,6 +1341,400 @@
         "CREATE INDEX idx_audit_actor ON audit_logs (actor_id)",
         "CREATE INDEX idx_audit_target ON audit_logs (target_user_id)",
         "CREATE INDEX idx_audit_created ON audit_logs (created)"
+      ]
+    },
+    {
+      "name": "email_agent_configs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin'",
+        "update": "@request.auth.role = 'admin'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "check_interval_minutes",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["active", "paused", "error"]
+        },
+        {
+          "name": "last_run_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "next_run_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_run_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_error_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "processed_count_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "auto_classified_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exceptions_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "connected_accounts_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_email_agent_status ON email_agent_configs (status)"]
+    },
+    {
+      "name": "email_agent_rules",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "update": "@request.auth.role = 'admin' || @request.auth.role = 'manager'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trigger_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["nfe_received", "cte_request", "complementary_doc", "unknown"]
+        },
+        {
+          "name": "subject_keywords",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sender_pattern",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "file_extensions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "action_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["start_process", "identify_cargo", "link_operation", "send_for_analysis"]
+        },
+        {
+          "name": "action_target_process",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "approval_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pending_approval", "approved", "rejected"]
+        },
+        {
+          "name": "approved_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "approved_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "order_priority",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "match_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_rules_trigger ON email_agent_rules (trigger_type)",
+        "CREATE INDEX idx_rules_approval ON email_agent_rules (approval_status)",
+        "CREATE INDEX idx_rules_active ON email_agent_rules (is_active)"
+      ]
+    },
+    {
+      "name": "email_processing_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.role = 'admin'",
+        "delete": "@request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "message_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "provider",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["gmail", "outlook", "manual"]
+        },
+        {
+          "name": "sender",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "recipient",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "received_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "snippet",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachments_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachments_details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "classification",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["nfe_received", "cte_request", "complementary_doc", "unknown"]
+        },
+        {
+          "name": "matched_rule_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "matched_rule_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "customer_identified",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "company_identified",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_identified_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "process_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["processed", "duplicate", "needs_analysis", "error"]
+        },
+        {
+          "name": "execution_result",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exception_details",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_duplicate",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notification_sent",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "processed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_email_msg_id ON email_processing_logs (message_id)",
+        "CREATE INDEX idx_email_classif ON email_processing_logs (classification)",
+        "CREATE INDEX idx_email_status ON email_processing_logs (process_status)",
+        "CREATE INDEX idx_email_received ON email_processing_logs (received_date)"
       ]
     }
   ]
