@@ -10,6 +10,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { VpoPage } from './pages/VpoPage'
+import { OperationsCenterPage } from './pages/OperationsCenterPage'
 import { TripsPage } from './pages/TripsPage'
 import { CtePage } from './pages/CtePage'
 import { MdfePage } from './pages/MdfePage'
@@ -71,7 +72,12 @@ const App = () => (
                 <Route path="/vpo-calc" element={<VpoPage />} />
               </Route>
 
-              {/* Módulo Viagens */}
+              {/* Módulo Central de Operações de Transporte (TMS Passo 1) */}
+              <Route element={<ProtectedRoute requiredModule="trips" />}>
+                <Route path="/operations-center" element={<OperationsCenterPage />} />
+              </Route>
+
+              {/* Módulo Viagens / Ordens de Transporte */}
               <Route element={<ProtectedRoute requiredModule="trips" />}>
                 <Route path="/trips" element={<TripsPage />} />
               </Route>

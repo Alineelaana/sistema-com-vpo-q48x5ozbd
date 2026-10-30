@@ -35,6 +35,7 @@ import {
   Receipt,
   Layers,
   ShieldAlert,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -89,6 +90,23 @@ const NAV_SECTIONS: NavSectionDef[] = [
     icon: Briefcase,
     items: [
       {
+        id: 'operations_center',
+        label: 'Central de Operações (TMS)',
+        to: '/operations-center',
+        icon: Zap,
+        badge: 'TMS P1',
+        highlight: true,
+        module: 'trips',
+        keywords: [
+          'esteira',
+          'operações',
+          'ordem de transporte',
+          'máquina de estados',
+          'liberação',
+          'tms',
+        ],
+      },
+      {
         id: 'deliveries',
         label: 'Entregas & Coletas',
         to: '/deliveries',
@@ -117,7 +135,7 @@ const NAV_SECTIONS: NavSectionDef[] = [
       },
       {
         id: 'trips',
-        label: 'Viagens & Cargas',
+        label: 'Viagens & Ordens de Carga',
         to: '/trips',
         icon: Truck,
         module: 'trips',

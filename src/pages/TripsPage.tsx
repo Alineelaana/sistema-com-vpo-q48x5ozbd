@@ -53,6 +53,7 @@ import {
   Calendar,
   CheckCircle,
   Clock,
+  Truck,
 } from 'lucide-react'
 import { VpoCalculator } from '@/components/VpoCalculator'
 
@@ -259,11 +260,12 @@ export const TripsPage: React.FC = () => {
         ? selectedTripForCte.freight_value + selectedTripForCte.vpo_value
         : selectedTripForCte.freight_value
 
-      // Cria registro de CT-e vinculado
+      // Cria registro de CT-e vinculado em fila de transmissão
+      // REGRA: Sem simulação fiscal - o documento é criado como pending e aguarda autorização oficial
       await createCteDocument({
         cte_number: nextNumber,
         series: company?.cte_series || 1,
-        access_key: `3525${Math.floor(1000000000000000000 + Math.random() * 9000000000000000000)}`,
+        access_key: `3526${Math.floor(1000000000000000000 + Math.random() * 9000000000000000000)}`,
         trip_id: selectedTripForCte.id,
         sender_name: cteForm.sender_name,
         sender_document: cteForm.sender_document,
@@ -274,15 +276,15 @@ export const TripsPage: React.FC = () => {
         vpo_included: cteForm.include_vpo,
         vpo_value: selectedTripForCte.vpo_value,
         total_cte_value: totalValue,
-        status: 'authorized', // Simulação do fluxo Connect
-        status_message: 'CT-e gerado e autorizado com destaque do VPO na ANTT/SEFAZ',
-        protocol: `13525${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+        status: 'pending',
+        status_message: 'CT-e gerado e colocado na fila da SEFAZ aguardando transmissão',
+        protocol: '',
         issued_at: new Date().toISOString(),
       })
 
       toast({
-        title: `CT-e nº ${nextNumber} emitido com sucesso!`,
-        description: `VPO no valor de R$ ${selectedTripForCte.vpo_value.toFixed(2)} incluído conforme Lei 10.209.`,
+        title: `CT-e nº ${nextNumber} gerado na fila!`,
+        description: `Conhecimento com VPO de R$ ${selectedTripForCte.vpo_value.toFixed(2)} pronto para transmissão SEFAZ.`,
       })
 
       setCteModalOpen(false)
@@ -301,12 +303,12 @@ export const TripsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <Navigation className="h-6 w-6 text-indigo-600" />
-            Controle de Viagens e Rotas
+            <Truck className="h-6 w-6 text-indigo-600" />
+            Ordens de Transporte & Viagens
           </h1>
           <p className="text-sm text-slate-500">
-            Crie viagens com cálculo automático do Vale Pedágio Obrigatório (VPO) e emita o CT-e com
-            1 clique.
+            Registro central da operação de transporte: dados completos de expedição, piso mínimo
+            ANTT, VPO e esteira operacional integrada.
           </p>
         </div>
 
@@ -368,13 +370,13 @@ export const TripsPage: React.FC = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Código Viagem</TableHead>
+                <TableHead>Ordem / Viagem</TableHead>
                 <TableHead>Rota (Origem ➔ Destino)</TableHead>
                 <TableHead>Veículo / Motorista</TableHead>
                 <TableHead>Frete</TableHead>
                 <TableHead>VPO Calculado</TableHead>
-                <TableHead>Total c/ Pedágio</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Status Operação</TableHead>
+                <TableHead>Status Viagem</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -399,8 +401,20 @@ export const TripsPage: React.FC = () => {
 
                   return (
                     <TableRow key={t.id}>
-                      <TableCell className="font-mono font-bold text-xs text-indigo-700">
-                        {t.trip_code}
+                      <TableCell>
+                        <div className="font-mono font-bold text-xs text-indigo-700">
+                          {t.operation_number || t.trip_code}
+                        </div>
+                        {t.operation_number && t.trip_code !== t.operation_number && (
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            Viag: {t.trip_code}
+                          </div>
+                        )}
+                        {t.nfe_number && (
+                          <div className="text-[10px] text-cyan-600 font-medium">
+                            NF-e: {t.nfe_number}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="font-medium text-slate-800 flex items-center gap-1.5 text-sm">
@@ -420,7 +434,9 @@ export const TripsPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="text-xs font-semibold text-slate-800">
-                          {vehicle ? `${vehicle.plate} (${vehicle.axles} eixos)` : 'Não atribuído'}
+                          {vehicle
+                            ? `${vehicle.plate} (${vehicle.axles} eixos)`
+                            : t.vehicle_plate || 'Não atribuído'}
                         </div>
                         <div className="text-xs text-slate-500">
                           {driver ? driver.name : 'Sem motorista'}
@@ -443,8 +459,18 @@ export const TripsPage: React.FC = () => {
                           {t.toll_tollgate_count || 0} praças × {t.axles_count} eixos
                         </div>
                       </TableCell>
-                      <TableCell className="font-bold text-slate-900">
-                        {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      <TableCell>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            t.operation_status === 'liberada'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : t.operation_status === 'requer_atencao'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-slate-100 text-slate-700 border border-slate-300'
+                          }`}
+                        >
+                          {t.operation_status || 'em_analise'}
+                        </span>
                       </TableCell>
                       <TableCell>
                         {t.status === 'in_progress' && (

@@ -1,5 +1,87 @@
 import { ScreenLogicDoc } from '@/components/ScreenLogicModal'
 
+export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Central de Operações de Transporte (TMS)',
+  screenBadge: 'Operações • Ordem de Transporte Central',
+  lastUpdate: '2026-10-29',
+  version: '1.0.0',
+  objective:
+    'Visão consolidada e esteira unificada de liberação da viagem (10 etapas): NF-e recebida ➔ Ordem de Transporte ➔ Veículo/Motorista ➔ Rota ➔ Frete/Piso Mínimo ➔ CT-e ➔ Contrato/CTRB ➔ CIOT ➔ VPO (Vale-Pedágio) ➔ MDF-e ➔ Envio ➔ Viagem Liberada. Permite ao operador auditar e aprovar a expedição sem navegar por múltiplas telas separadas.',
+  realFeatures: [
+    'Esteira visual com 10 etapas sequenciais com cores e status em tempo real (Pendente, Em Processamento, Concluída, Requer Atenção, Erro)',
+    'Preenchimento automático da Ordem de Transporte a partir da NF-e identificada pelo agente de cargas (sem redigitar remetente, destinatário, mercadoria, pesos e valores)',
+    'Proteção anti-duplicação: impede gerar mais de uma ordem ativa para a mesma chave de NF-e',
+    'Cálculo e validação obrigatória do Piso Mínimo de Frete ANTT (Resolução nº 5.867/2019)',
+    'Destaque e controle de quitação do Vale-Pedágio Obrigatório (Lei 10.209/01) com cálculo por praça e eixos',
+    'Catálogo e status real dos Conectores de Integração: SEFAZ, ANTT/IPEF, Concessionárias, Seguradoras, WhatsApp e Assinatura Digital exibidos honestamente como "Aguardando configuração" quando não há credenciais',
+    'Nunca simula autorização fiscal ou concessão de crédito/pagamento financeiro',
+    'Trilha de auditoria completa gravada na coleção audit_logs a cada avanço ou alteração',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Importar NF-e e Gerar Ordem',
+      type: 'Botão de Ação Primária (Modal)',
+      purpose:
+        'Seleciona uma NF-e recebida na caixa de entrada para criar a Ordem de Transporte sem duplicar cadastros.',
+    },
+    {
+      name: 'Esteira de Etapas',
+      type: 'Cards Interativos Sequenciais',
+      purpose:
+        'Ao clicar em qualquer etapa, abre os detalhes, documentos gerados e permite reprocessamento cirúrgico.',
+    },
+    {
+      name: 'Processar Automaticamente',
+      type: 'Botão de Orquestração',
+      purpose:
+        'Comanda os hooks do backend para checar pendências e avançar as etapas autorizadas.',
+    },
+    {
+      name: 'Liberar Viagem',
+      type: 'Botão de Bloqueio/Liberação',
+      purpose:
+        'Aprova a liberação da ordem caso veículo, motorista, piso mínimo e VPO estejam regulares.',
+    },
+    {
+      name: 'Aba Conectores de Integração',
+      type: 'Painel de Contratos',
+      purpose:
+        'Exibe o status dos conectores com terceiros (SEFAZ, ANTT, Operadoras de TAG) sem promessas irreais.',
+    },
+  ],
+  businessRules: [
+    'Apenas uma Ordem de Transporte pode ser vinculada à mesma chave de NF-e.',
+    'O frete contratado deve respeitar o Piso Mínimo da ANTT (Res. 5.867/2019) ou receber aprovação executiva.',
+    'O VPO é de responsabilidade do embarcador e deve ser pago antes da viagem via TAG ou cartão homologado.',
+    'Sem simulação fiscal: na ausência de certificado digital A1 ou credenciais SEFAZ, a etapa fica em "Aguardando configuração".',
+  ],
+  agentsAndAutomations: [
+    'Hook operations_orchestrator.pb.js orquestra o ciclo de vida da ordem e aciona fiscal_regularization e dispatch_agent.',
+  ],
+  validations: [
+    'Bloqueio de liberação caso falte veículo, motorista ou piso mínimo ANTT.',
+    'Validação estrita de unicidade da chave fiscal.',
+  ],
+  integrations: [
+    'Coleções trips (estendida), received_fiscal_documents, cte_documents, mdfe_documents, ciot_records, audit_logs.',
+  ],
+  flowsAndDependencies: [
+    'Alimenta o despacho automático da Etapa 4 e Torre de Controle assim que a viagem é liberada.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'received_fiscal_documents, trips, vehicles, drivers.',
+    destination: 'trips, audit_logs e conectores integrados.',
+    persistence: 'PocketBase SQLite com auditoria.',
+  },
+  permissions: [
+    { role: 'Operador, Gestor e Admin', access: 'Orquestração e liberação de viagens.' },
+    { role: 'Visualizador e Financeiro', access: 'Consulta somente leitura do fluxo.' },
+  ],
+  notificationsAndErrors: [
+    'Alerta visual vermelho/amarelo para etapas com pendências impeditivas de liberação.',
+  ],
+}
+
 export const DASHBOARD_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Dashboard de Operações Integrado',
   screenBadge: 'Visão Geral • Prioridades 1, 2, 3 e 4',
@@ -219,16 +301,19 @@ export const DRIVERS_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
 }
 
 export const TRIPS_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
-  screenTitle: 'Ordens de Carregamento & Viagens',
-  screenBadge: 'Operacional • Ordem de Carga',
+  screenTitle: 'Ordens de Transporte & Viagens',
+  screenBadge: 'Operacional • Ordem de Transporte Central (TMS)',
   lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  version: '2.0.0',
   objective:
-    'Gerenciar as ordens de carregamento e viagens da transportadora. É a entidade oficial onde o Agente de Identificação de Cargas (Prioridade 2) vincula as NF-es recebidas após validação de múltiplos sinais.',
+    'Gerenciar as Ordens de Transporte (entidade estendida a partir das viagens) como registro único central da operação logística: dados de remetente, destinatário, expedidor, recebedor, mercadoria, veículos, condutor, piso mínimo ANTT, VPO e esteira operacional vinculada à NF-e pelo Agente de Cargas sem duplicação cadastral.',
   realFeatures: [
+    'Número oficial da operação (ex: OT-2026-0001) e sincronização bidirecional com a Central de Operações de Transporte',
+    'Preenchimento automático e herança de dados a partir da NF-e identificada pelo Agente de Cargas',
     'Cadastro de viagem com origem, destino, veículo, motorista, peso da carga e valor do frete',
-    'Cálculo e destaque de Vale Pedágio Obrigatório (VPO) conforme eixos e distância',
-    'Status da viagem: Planejada, Em Trânsito, Concluída, Cancelada',
+    'Cálculo e destaque de Vale Pedágio Obrigatório (VPO) conforme eixos e distância com voucher na TAG',
+    'Validação do Piso Mínimo de Frete ANTT (Res. 5.867/2019) e condições de adiantamento/saldo',
+    'Status da operação: Rascunho, Requer Atenção, Pronto para Liberação, Liberada, Em Trânsito, Concluída',
     'Visualização de documentos fiscais e entregas associadas a cada viagem',
   ],
   fieldsAndButtons: [

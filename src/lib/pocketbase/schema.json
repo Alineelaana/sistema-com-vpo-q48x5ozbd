@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T17:53:19.534Z",
+  "generatedAt": "2026-10-30T23:15:39.311Z",
   "collections": [
     {
       "name": "users",
@@ -583,6 +583,250 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "operation_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transport_mode",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["lotacao", "fracionada", "dedicado", "subcontratacao"]
+        },
+        {
+          "name": "sender_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sender_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recipient_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "shipper_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "shipper_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receiver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receiver_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pickup_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nfe_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nfe_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nfe_series",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_document_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "received_fiscal_documents"
+        },
+        {
+          "name": "cargo_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cargo_volume_m3",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate_2",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_rntrc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_profile",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["frota_propria", "etc", "tac_equiparado", "tac_independente", "ctc"]
+        },
+        {
+          "name": "contracted_carrier_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_carrier_doc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "minimum_floor_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "minimum_floor_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["validado", "abaixo_piso", "dispensado", "pendente"]
+        },
+        {
+          "name": "payment_terms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "advance_payment_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balance_payment_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_policy_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_averbacao_protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contract_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contract_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pendente", "assinado", "dispensado", "cancelado"]
+        },
+        {
+          "name": "operation_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "rascunho",
+            "aguardando_dados",
+            "em_processamento",
+            "requer_atencao",
+            "pronto_para_liberacao",
+            "liberada",
+            "em_transito",
+            "concluida",
+            "cancelada"
+          ]
+        },
+        {
+          "name": "workflow_stages",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dispatch_released_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dispatch_released_by",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_trips_code ON trips (trip_code)"]
@@ -1354,7 +1598,12 @@
             "dispatch_recipient_toggle",
             "dispatch_send_success",
             "dispatch_send_fail",
-            "dispatch_send_retry"
+            "dispatch_send_retry",
+            "operation_orchestrate",
+            "operation_stage_process",
+            "operation_release",
+            "operation_reprocess",
+            "operation_create_from_nfe"
           ]
         },
         {

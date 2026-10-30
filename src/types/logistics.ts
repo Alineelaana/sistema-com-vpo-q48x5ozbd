@@ -74,6 +74,70 @@ export interface Driver {
   updated?: string
 }
 
+export type WorkflowStageStatus =
+  | 'pendente'
+  | 'em_processamento'
+  | 'concluida'
+  | 'requer_atencao'
+  | 'erro'
+
+export interface WorkflowStageInfo {
+  status: WorkflowStageStatus
+  updated_at?: string
+  message?: string
+  details?: Record<string, unknown>
+}
+
+export type OperationStatus =
+  | 'rascunho'
+  | 'aguardando_dados'
+  | 'em_processamento'
+  | 'requer_atencao'
+  | 'pronto_para_liberacao'
+  | 'liberada'
+  | 'em_transito'
+  | 'concluida'
+  | 'cancelada'
+
+export type TransportMode = 'lotacao' | 'fracionada' | 'dedicado' | 'subcontratacao'
+export type MinimumFloorStatus = 'validado' | 'abaixo_piso' | 'dispensado' | 'pendente'
+export type ContractStatus = 'pendente' | 'assinado' | 'dispensado' | 'cancelado'
+
+export interface TripWorkflowStages {
+  nfe?: WorkflowStageInfo
+  ordem?: WorkflowStageInfo
+  veiculo_motorista?: WorkflowStageInfo
+  roteirizacao?: WorkflowStageInfo
+  piso_minimo?: WorkflowStageInfo
+  cte?: WorkflowStageInfo
+  contrato?: WorkflowStageInfo
+  ciot?: WorkflowStageInfo
+  vpo?: WorkflowStageInfo
+  mdfe?: WorkflowStageInfo
+  envio?: WorkflowStageInfo
+  liberacao?: WorkflowStageInfo
+}
+
+export interface ConnectorContract {
+  id: string
+  name: string
+  category:
+    | 'fiscal'
+    | 'regulamentar'
+    | 'pedagio'
+    | 'logistica'
+    | 'seguros'
+    | 'comunicacao'
+    | 'juridico'
+  provider: string
+  status: 'configurado' | 'aguardando_configuracao' | 'em_implantacao' | 'erro'
+  status_label: string
+  description: string
+  has_credentials: boolean
+  simulation_allowed: boolean
+  notes: string
+}
+
 export interface Trip {
   id: string
   trip_code: string
@@ -94,9 +158,51 @@ export interface Trip {
   vpo_responsible?: 'embarcador' | 'transportador' | 'destinatario'
   vpo_voucher_number?: string
   status?: 'planned' | 'in_progress' | 'completed' | 'cancelled'
+
+  // Ordem de Transporte (TMS Passo 1)
+  operation_number?: string
+  transport_mode?: TransportMode
+  sender_name?: string
+  sender_document?: string
+  recipient_name?: string
+  recipient_document?: string
+  shipper_name?: string
+  shipper_document?: string
+  receiver_name?: string
+  receiver_document?: string
+  pickup_address?: string
+  delivery_address?: string
+  nfe_key?: string
+  nfe_number?: string
+  nfe_series?: string
+  fiscal_document_id?: string
+  cargo_value?: number
+  cargo_volume_m3?: number
+  vehicle_plate?: string
+  trailer_plate?: string
+  trailer_plate_2?: string
+  carrier_rntrc?: string
+  carrier_profile?: 'frota_propria' | 'etc' | 'tac_equiparado' | 'tac_independente' | 'ctc'
+  contracted_carrier_name?: string
+  contracted_carrier_doc?: string
+  minimum_floor_value?: number
+  minimum_floor_status?: MinimumFloorStatus
+  payment_terms?: string
+  advance_payment_value?: number
+  balance_payment_value?: number
+  insurance_policy_number?: string
+  insurance_averbacao_protocol?: string
+  contract_number?: string
+  contract_status?: ContractStatus
+  operation_status?: OperationStatus
+  workflow_stages?: string | TripWorkflowStages
+  dispatch_released_at?: string
+  dispatch_released_by?: string
+
   expand?: {
     vehicle_id?: Vehicle
     driver_id?: Driver
+    fiscal_document_id?: unknown
   }
   created?: string
   updated?: string

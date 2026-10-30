@@ -202,6 +202,11 @@ export type AuditAction =
   | 'dispatch_send_success'
   | 'dispatch_send_fail'
   | 'dispatch_send_retry'
+  | 'operation_orchestrate'
+  | 'operation_stage_process'
+  | 'operation_release'
+  | 'operation_reprocess'
+  | 'operation_create_from_nfe'
 
 export interface AuditLog {
   id: string
@@ -368,6 +373,26 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, { label: string; badge: st
   dispatch_send_retry: {
     label: 'Reenvio de Documento',
     badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  operation_orchestrate: {
+    label: 'Orquestração de Operação TMS',
+    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+  },
+  operation_stage_process: {
+    label: 'Processamento de Etapa Operacional',
+    badge: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
+  },
+  operation_release: {
+    label: 'Liberação da Viagem',
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  operation_reprocess: {
+    label: 'Reprocessamento de Etapa',
+    badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  operation_create_from_nfe: {
+    label: 'Ordem de Transporte Criada da NF-e',
+    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   },
 }
 
