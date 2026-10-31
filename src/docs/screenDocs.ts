@@ -6,7 +6,7 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   lastUpdate: '2026-10-29',
   version: '1.0.0',
   objective:
-    'Visão consolidada e esteira unificada de liberação da viagem (10 etapas): NF-e recebida ➔ Ordem de Transporte ➔ Veículo/Motorista ➔ Rota ➔ Frete/Piso Mínimo ➔ CT-e ➔ Contrato/CTRB ➔ CIOT ➔ VPO (Vale-Pedágio) ➔ MDF-e ➔ Envio ➔ Viagem Liberada. Permite ao operador auditar e aprovar a expedição sem navegar por múltiplas telas separadas.',
+    'Visão consolidada e esteira unificada de liberação da viagem (12 etapas): NF-e recebida ➔ Ordem de Transporte ➔ Veículo/Motorista ➔ Rota ➔ Frete/Piso Mínimo ➔ CT-e ➔ Contrato/CTRB (Passo 4) ➔ CIOT ➔ VPO (Vale-Pedágio) ➔ MDF-e ➔ Envio ➔ Viagem Liberada. Permite ao operador auditar, configurar modelos de contrato, emitir o CTRB em PDF operacional e aprovar a expedição com salvaguardas anti-duplicação.',
   realFeatures: [
     'Esteira visual com 10 etapas sequenciais com cores e status em tempo real (Pendente, Em Processamento, Concluída, Requer Atenção, Erro)',
     'Preenchimento automático da Ordem de Transporte a partir da NF-e identificada pelo agente de cargas (sem redigitar remetente, destinatário, mercadoria, pesos e valores)',
@@ -63,7 +63,7 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Validação estrita de unicidade da chave fiscal.',
   ],
   integrations: [
-    'Coleções trips (estendida), received_fiscal_documents, cte_documents, mdfe_documents, ciot_records, audit_logs.',
+    'Coleções trips (estendida), received_fiscal_documents, cte_documents, mdfe_documents, ciot_records, transport_contracts, contract_templates, audit_logs.',
   ],
   flowsAndDependencies: [
     'Alimenta o despacho automático da Etapa 4 e Torre de Controle assim que a viagem é liberada.',

@@ -432,7 +432,48 @@ routerAdd(
       const nowIso = new Date().toISOString()
       let stageResult = { success: true, message: '', isAuthorized: false }
 
-      if (targetStage === 'roteirizacao') {
+      if (targetStage === 'contrato') {
+        const contracts = e.app.findRecordsByFilter(
+          'transport_contracts',
+          `trip_id = '${tripId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (contracts.length > 0) {
+          const contract = contracts[0]
+          const cNum = contract.getString('contract_number')
+          const cStatus = contract.getString('status')
+          const sigStatus = contract.getString('signature_status')
+          const isDone = cStatus === 'emitido' || cStatus === 'assinado'
+
+          stages.contrato = {
+            status: isDone ? 'concluida' : 'requer_atencao',
+            updated_at: nowIso,
+            message:
+              cStatus === 'assinado'
+                ? `Contrato CTRB nº ${cNum} assinado digitalmente.`
+                : `Contrato CTRB nº ${cNum} gerado com sucesso (${sigStatus === 'aguardando_configuracao' ? 'Aguardando configuração de assinatura eletrônica' : sigStatus}).`,
+            details: {
+              contract_id: contract.id,
+              contract_number: cNum,
+              status: cStatus,
+              signature_status: sigStatus,
+              carrier_profile: contract.getString('carrier_profile'),
+              freight_value: contract.getFloat('freight_value'),
+            },
+          }
+          stageResult.message = stages.contrato.message
+        } else {
+          stages.contrato = {
+            status: 'requer_atencao',
+            updated_at: nowIso,
+            message: 'CTRB e contrato de frete pendentes de geração.',
+            details: {},
+          }
+          stageResult.message = stages.contrato.message
+        }
+      } else if (targetStage === 'roteirizacao') {
         const isApproved = trip.getBool('route_approved')
         const distance = trip.getFloat('distance_km') || 0
         if (isApproved && distance > 0) {
@@ -1478,6 +1519,445 @@ routerAdd(
       return e.json(500, {
         success: false,
         error: err ? err.message || String(err) : 'Erro ao aprovar rota da Ordem de Transporte.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 7. Rota para GERAÇÃO DO CONTRATO DE TRANSPORTE / CTRB (Passo 4)
+// POST /backend/v1/contracts/generate
+// Regra: Bloquear geração se o frete estiver abaixo do piso mínimo ('bloqueado_abaixo_piso' ou 'abaixo_piso')
+// Anti-duplicação: Se já existir contrato para a viagem, atualiza/substitui sem duplicar
+routerAdd(
+  'POST',
+  '/backend/v1/contracts/generate',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const tripId = body.trip_id
+      const templateId = body.template_id || ''
+      const bankDetails = body.bank_details || {}
+      const customNotes = body.notes || ''
+
+      if (!tripId) {
+        return e.json(400, { success: false, error: 'trip_id é obrigatório para gerar o CTRB.' })
+      }
+
+      let trip
+      try {
+        trip = e.app.findRecordById('trips', tripId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Ordem de Transporte não encontrada.' })
+      }
+
+      // 1. REGRA PRINCIPAL: Bloqueio estrito se o piso mínimo estiver abaixo ou bloqueado
+      const floorRegStatus = trip.getString('floor_regularization_status')
+      const minFloorLegacy = trip.getString('minimum_floor_status')
+      const floorApplicable = trip.getBool('floor_applicable')
+
+      const isBlockedByFloor =
+        floorApplicable &&
+        (floorRegStatus === 'bloqueado_abaixo_piso' || minFloorLegacy === 'abaixo_piso')
+
+      if (isBlockedByFloor) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Bloqueio de Conformidade ANTT: Não é permitido gerar o Contrato de Transporte (CTRB) enquanto o frete acordado estiver abaixo do piso mínimo oficial sem regularização ou justificativa legal aprovada. Acesse a etapa Piso Mínimo e regularize a operação.',
+          blocker: 'floor_minimum_violation',
+          minimum_floor_value: trip.getFloat('minimum_floor_value'),
+          freight_value: trip.getFloat('freight_value'),
+        })
+      }
+
+      // 2. Recuperar dados cadastrais da empresa emitente (Contratante)
+      let company = null
+      try {
+        const comps = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+        if (comps.length > 0) company = comps[0]
+      } catch (_) {}
+
+      const contractorName = company
+        ? company.getString('corporate_name')
+        : 'TransConnect Logística Ltda'
+      const contractorDoc = company ? company.getString('cnpj') : '12.345.678/0001-90'
+      const contractorRntrc = company ? company.getString('rntrc') : '49827361'
+      const contractorAddress = company
+        ? `${company.getString('address')} - ${company.getString('city')}/${company.getString('state')}`
+        : 'Rodovia dos Bandeirantes, Km 68, Galpão 4 - Jundiaí/SP'
+
+      // 3. Recuperar motorista cadastrado
+      let driver = null
+      const driverId = trip.getString('driver_id')
+      if (driverId) {
+        try {
+          driver = e.app.findRecordById('drivers', driverId)
+        } catch (_) {}
+      }
+
+      // 4. Recuperar veículo cadastrado
+      let vehicle = null
+      const vehicleId = trip.getString('vehicle_id')
+      if (vehicleId) {
+        try {
+          vehicle = e.app.findRecordById('vehicles', vehicleId)
+        } catch (_) {}
+      }
+
+      // 5. Selecionar o Modelo Contratual Vigente
+      let templateRec = null
+      const carrierProfile = trip.getString('carrier_profile') || 'tac_equiparado'
+      if (templateId) {
+        try {
+          templateRec = e.app.findRecordById('contract_templates', templateId)
+        } catch (_) {}
+      }
+
+      if (!templateRec) {
+        const templates = e.app.findRecordsByFilter(
+          'contract_templates',
+          `is_active = true && (carrier_profile = '${carrierProfile}' || is_default = true || carrier_profile = 'geral')`,
+          '-is_default,-created',
+          1,
+          0,
+        )
+        if (templates.length > 0) {
+          templateRec = templates[0]
+        }
+      }
+
+      let clausesSnapshot = []
+      let responsibilitiesText =
+        'O Transportador declara que o veículo atende aos requisitos mecânicos e de segurança, com eixos em conformidade, e se compromete a cumprir a rota aprovada respeitando os tempos de descanso da Lei nº 13.103/2015.'
+      let penaltyTermsText =
+        'Atrasos injustificados ou avarias decorrentes de negligência ensejarão retenção proporcional do saldo de frete até a devida apuração pericial e securitária.'
+      let jurisdiction = 'Comarca de Jundiaí/SP'
+
+      if (templateRec) {
+        try {
+          const rawClauses = templateRec.getString('clauses')
+          clausesSnapshot = rawClauses ? JSON.parse(rawClauses) : []
+        } catch (_) {
+          clausesSnapshot = []
+        }
+        responsibilitiesText =
+          templateRec.getString('responsibilities_text') || responsibilitiesText
+        penaltyTermsText = templateRec.getString('penalty_terms_text') || penaltyTermsText
+        const jCity = templateRec.getString('jurisdiction_city') || 'Jundiaí'
+        const jState = templateRec.getString('jurisdiction_state') || 'SP'
+        jurisdiction = `Comarca de ${jCity}/${jState}`
+      }
+
+      // 6. Dados do Transportador Contratado
+      const contractedCarrierName =
+        trip.getString('contracted_carrier_name') ||
+        (driver ? driver.getString('name') : 'Transportador Contratado')
+      const contractedCarrierDoc =
+        trip.getString('contracted_carrier_doc') ||
+        (driver ? driver.getString('cpf') : 'Não informado')
+      const contractedCarrierRntrc = trip.getString('carrier_rntrc') || contractorRntrc
+
+      // 7. Dados Bancários consolidados
+      const bankName = bankDetails.bank_name || 'Banco do Brasil (001)'
+      const bankAgency = bankDetails.bank_agency || '1234-5'
+      const bankAccount = bankDetails.bank_account || '98765-4'
+      const bankPixKey = bankDetails.bank_pix_key || contractedCarrierDoc
+      const beneficiaryName = bankDetails.beneficiary_name || contractedCarrierName
+      const beneficiaryDoc = bankDetails.beneficiary_doc || contractedCarrierDoc
+
+      // 8. Número oficial do CTRB
+      const opNumber = trip.getString('operation_number') || trip.getString('trip_code')
+      const year = new Date().getFullYear()
+      const existingContractNum = trip.getString('contract_number')
+      const contractNumber =
+        existingContractNum ||
+        `CTRB-${year}-${String(trip.getInt('id') || Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`
+
+      // 9. Anti-duplicação: verificar se já existe registro de contrato para a viagem
+      const contractsCol = e.app.findCollectionByNameOrId('transport_contracts')
+      const existingContracts = e.app.findRecordsByFilter(
+        'transport_contracts',
+        `trip_id = '${tripId}'`,
+        '',
+        1,
+        0,
+      )
+
+      let contractRec
+      let isUpdate = false
+      if (existingContracts.length > 0) {
+        contractRec = existingContracts[0]
+        isUpdate = true
+      } else {
+        contractRec = new Record(contractsCol)
+      }
+
+      const nowIso = new Date().toISOString()
+      const freightValue = trip.getFloat('freight_value') || 0
+      const advanceVal = trip.getFloat('advance_payment_value') || Math.round(freightValue * 0.7)
+      const balanceVal = trip.getFloat('balance_payment_value') || Math.round(freightValue * 0.3)
+      const paymentTerms =
+        trip.getString('payment_terms') ||
+        '70% Adiantamento no carregamento + 30% Saldo na confirmação de entrega (POD)'
+
+      contractRec.set('trip_id', tripId)
+      if (templateRec) contractRec.set('template_id', templateRec.id)
+      contractRec.set('contract_number', contractNumber)
+      contractRec.set('operation_number', opNumber)
+      contractRec.set('trip_code', trip.getString('trip_code'))
+      contractRec.set('status', 'emitido')
+
+      contractRec.set('contractor_name', contractorName)
+      contractRec.set('contractor_document', contractorDoc)
+      contractRec.set('contractor_rntrc', contractorRntrc)
+      contractRec.set('contractor_address', contractorAddress)
+
+      contractRec.set('contracted_carrier_name', contractedCarrierName)
+      contractRec.set('contracted_carrier_document', contractedCarrierDoc)
+      contractRec.set('contracted_carrier_rntrc', contractedCarrierRntrc)
+      contractRec.set('carrier_profile', carrierProfile)
+      contractRec.set(
+        'carrier_address',
+        body.carrier_address || 'Endereço cadastrado na base ANTT/RNTRC',
+      )
+      contractRec.set(
+        'carrier_phone',
+        driver ? driver.getString('phone') : body.carrier_phone || '(11) 98765-4321',
+      )
+
+      contractRec.set('bank_name', bankName)
+      contractRec.set('bank_agency', bankAgency)
+      contractRec.set('bank_account', bankAccount)
+      contractRec.set('bank_pix_key', bankPixKey)
+      contractRec.set('bank_beneficiary_name', beneficiaryName)
+      contractRec.set('bank_beneficiary_doc', beneficiaryDoc)
+
+      contractRec.set('driver_name', driver ? driver.getString('name') : 'Motorista alocado')
+      contractRec.set('driver_cpf', driver ? driver.getString('cpf') : '')
+      contractRec.set('driver_cnh', driver ? driver.getString('cnh') : '')
+      contractRec.set('driver_phone', driver ? driver.getString('phone') : '')
+
+      contractRec.set(
+        'vehicle_plate',
+        trip.getString('vehicle_plate') || (vehicle ? vehicle.getString('plate') : ''),
+      )
+      contractRec.set('trailer_plate', trip.getString('trailer_plate') || '')
+      contractRec.set('trailer_plate_2', trip.getString('trailer_plate_2') || '')
+      contractRec.set('vehicle_model', vehicle ? vehicle.getString('model') : 'Cavalo Mecânico')
+      contractRec.set('axles_count', trip.getInt('axles_count') || 6)
+      contractRec.set('cargo_type', trip.getString('cargo_type') || 'Carga Geral')
+      contractRec.set('cargo_weight_kg', trip.getFloat('weight_kg') || 0)
+      contractRec.set('cargo_value', trip.getFloat('cargo_value') || 0)
+      contractRec.set('nfe_number', trip.getString('nfe_number') || '')
+      contractRec.set('nfe_key', trip.getString('nfe_key') || '')
+
+      contractRec.set('origin_city', trip.getString('origin_city'))
+      contractRec.set('origin_state', trip.getString('origin_state'))
+      contractRec.set('destination_city', trip.getString('destination_city'))
+      contractRec.set('destination_state', trip.getString('destination_state'))
+      contractRec.set('distance_km', trip.getFloat('distance_km') || 0)
+      contractRec.set('route_highways', trip.getString('highways') || '')
+      contractRec.set('pickup_address', trip.getString('pickup_address') || '')
+      contractRec.set('delivery_address', trip.getString('delivery_address') || '')
+
+      contractRec.set('freight_value', freightValue)
+      contractRec.set('minimum_floor_value', trip.getFloat('minimum_floor_value') || 0)
+      contractRec.set(
+        'minimum_floor_table_version',
+        trip.getString('floor_table_version') || 'ANTT-RES-6059-2024',
+      )
+      contractRec.set('minimum_floor_status', floorRegStatus || minFloorLegacy || 'validado')
+      contractRec.set('payment_terms', paymentTerms)
+      contractRec.set('advance_payment_value', advanceVal)
+      contractRec.set('balance_payment_value', balanceVal)
+      contractRec.set('vpo_value', trip.getFloat('vpo_value') || 0)
+      contractRec.set('vpo_voucher_number', trip.getString('vpo_voucher_number') || '')
+      contractRec.set('vpo_responsible', trip.getString('vpo_responsible') || 'embarcador')
+
+      contractRec.set(
+        'insurance_policy_number',
+        trip.getString('insurance_policy_number') || 'POL-2026-PORTO-9841',
+      )
+      contractRec.set(
+        'insurance_averbacao_protocol',
+        trip.getString('insurance_averbacao_protocol') || '',
+      )
+
+      contractRec.set('clauses_snapshot', JSON.stringify(clausesSnapshot))
+      contractRec.set('responsibilities_text', responsibilitiesText)
+      contractRec.set('penalty_terms_text', penaltyTermsText)
+      contractRec.set('jurisdiction', jurisdiction)
+
+      contractRec.set('signature_status', 'aguardando_configuracao')
+      contractRec.set('signature_provider', 'Clicksign / Docusign (Não conectado)')
+      contractRec.set('signature_document_id', '')
+      contractRec.set('signature_url', '')
+
+      contractRec.set('generated_by', authUser ? authUser.getString('name') : 'Operador Central')
+      contractRec.set('generated_at', nowIso)
+      contractRec.set('version', (contractRec.getInt('version') || 0) + 1)
+
+      e.app.save(contractRec)
+
+      // 10. Atualizar a Ordem de Transporte (trips)
+      trip.set('contract_number', contractNumber)
+      trip.set('contract_status', 'pendente')
+      trip.set('advance_payment_value', advanceVal)
+      trip.set('balance_payment_value', balanceVal)
+      trip.set('payment_terms', paymentTerms)
+      if (contractedCarrierName) trip.set('contracted_carrier_name', contractedCarrierName)
+      if (contractedCarrierDoc) trip.set('contracted_carrier_doc', contractedCarrierDoc)
+
+      let stages = {}
+      try {
+        const rawJson = trip.getString('workflow_stages')
+        stages = rawJson ? JSON.parse(rawJson) : {}
+      } catch (_) {
+        stages = {}
+      }
+
+      stages.contrato = {
+        status: 'concluida',
+        updated_at: nowIso,
+        message: `Contrato de Transporte / CTRB nº ${contractNumber} gerado com sucesso. Vinculado à operação. Aguardando configuração de assinatura eletrônica.`,
+        details: {
+          contract_id: contractRec.id,
+          contract_number: contractNumber,
+          freight_value: freightValue,
+          advance_payment_value: advanceVal,
+          balance_payment_value: balanceVal,
+          signature_status: 'aguardando_configuracao',
+          carrier_profile: carrierProfile,
+          generated_at: nowIso,
+        },
+      }
+      trip.set('workflow_stages', JSON.stringify(stages))
+      e.app.save(trip)
+
+      // 11. Auditoria detalhada
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Operador TMS')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set('action', 'contract_generate')
+        auditRec.set(
+          'description',
+          `${isUpdate ? 'Regeneração' : 'Geração'} do Contrato CTRB nº ${contractNumber} para a Ordem ${opNumber} (Transportador: ${contractedCarrierName}).`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            contractId: contractRec.id,
+            contractNumber,
+            tripId,
+            operationNumber: opNumber,
+            freightValue,
+            advanceVal,
+            balanceVal,
+            isUpdate,
+            carrierProfile,
+            templateId: templateRec ? templateRec.id : null,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: `${isUpdate ? 'Contrato CTRB atualizado' : 'Contrato CTRB gerado'} com sucesso! Número: ${contractNumber}.`,
+        contract: {
+          id: contractRec.id,
+          contract_number: contractNumber,
+          operation_number: opNumber,
+          trip_code: trip.getString('trip_code'),
+          status: contractRec.getString('status'),
+          signature_status: contractRec.getString('signature_status'),
+          contractor_name: contractorName,
+          contracted_carrier_name: contractedCarrierName,
+          driver_name: contractRec.getString('driver_name'),
+          vehicle_plate: contractRec.getString('vehicle_plate'),
+          freight_value: freightValue,
+          advance_payment_value: advanceVal,
+          balance_payment_value: balanceVal,
+          payment_terms: paymentTerms,
+          origin: `${trip.getString('origin_city')}/${trip.getString('origin_state')}`,
+          destination: `${trip.getString('destination_city')}/${trip.getString('destination_state')}`,
+          distance_km: trip.getFloat('distance_km'),
+          generated_at: nowIso,
+          version: contractRec.getInt('version'),
+        },
+      })
+    } catch (err) {
+      console.error('[contracts:generate] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro interno ao gerar contrato CTRB.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 8. Rota para solicitar assinatura eletrônica honesta (sem provedor conectado -> informativo)
+// POST /backend/v1/contracts/request-signature
+routerAdd(
+  'POST',
+  '/backend/v1/contracts/request-signature',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const contractId = body.contract_id
+
+      if (!contractId) {
+        return e.json(400, { success: false, error: 'contract_id é obrigatório.' })
+      }
+
+      let contract
+      try {
+        contract = e.app.findRecordById('transport_contracts', contractId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Contrato não encontrado.' })
+      }
+
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Operador TMS')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set('action', 'contract_signature_request')
+        auditRec.set(
+          'description',
+          `Tentativa de envio para assinatura eletrônica do CTRB nº ${contract.getString('contract_number')}: Provedor externo não conectado.`,
+        )
+        auditRec.set('details', JSON.stringify({ contractId }))
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: false,
+        status: 'aguardando_configuracao',
+        message:
+          'Provedor de Assinatura Eletrônica (Clicksign, DocuSign ou Certificado ICP-Brasil) ainda não configurado na aba Conectores. Para coletar assinaturas digitais válidas com carimbo de tempo, configure as credenciais da API jurídica.',
+        notes:
+          'O sistema mantém o status do contrato como "Aguardando configuração", sem falsas simulações de assinatura jurídica.',
+      })
+    } catch (err) {
+      console.error('[contracts:request-signature] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro ao processar assinatura eletrônica.',
       })
     }
   },

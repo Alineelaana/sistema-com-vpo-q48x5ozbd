@@ -49,6 +49,15 @@ import {
 import { getReceivedFiscalDocuments } from '@/services/cargoAgentService'
 import { calculateMinimumFloor, regularizeMinimumFloor } from '@/services/minimumFloorService'
 import {
+  getContractByTripId,
+  generateContract,
+  requestElectronicSignature,
+  getContractTemplates,
+} from '@/services/contractService'
+import { ContractPdfModal } from '@/components/ContractPdfModal'
+import { ContractTemplateModal } from '@/components/ContractTemplateModal'
+import type { TransportContract, ContractTemplate } from '@/types/contract'
+import {
   ConnectorContract,
   Trip,
   TripWorkflowStages,
@@ -199,6 +208,25 @@ export function OperationsCenterPage() {
   // Modal da Lógica da Tela
   const [isLogicModalOpen, setIsLogicModalOpen] = useState(false)
 
+  // Estados específicos do CTRB / Contrato de Transporte (Passo 4)
+  const [currentContract, setCurrentContract] = useState<TransportContract | null>(null)
+  const [isContractPdfModalOpen, setIsContractPdfModalOpen] = useState(false)
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<ContractTemplate | null>(
+    null,
+  )
+  const [isGeneratingContract, setIsGeneratingContract] = useState(false)
+  const [templatesList, setTemplatesList] = useState<ContractTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
+  const [contractBankDetails, setContractBankDetails] = useState({
+    bank_name: 'Banco do Brasil (001)',
+    bank_agency: '1234-5',
+    bank_account: '98765-4',
+    bank_pix_key: '',
+    beneficiary_name: '',
+    beneficiary_doc: '',
+  })
+
   // Carregar Ordens e Conectores
   const loadData = async () => {
     setIsLoading(true)
@@ -235,7 +263,112 @@ export function OperationsCenterPage() {
 
   useEffect(() => {
     loadData()
+    // Carregar modelos contratuais disponíveis
+    getContractTemplates().then((tmpls) => {
+      setTemplatesList(tmpls)
+      if (tmpls.length > 0) {
+        const def = tmpls.find((t) => t.is_default) || tmpls[0]
+        setSelectedTemplateId(def.id)
+      }
+    })
   }, [])
+
+  // Buscar contrato vinculado quando selectedOrder mudar
+  useEffect(() => {
+    if (selectedOrder) {
+      getContractByTripId(selectedOrder.id).then((c) => {
+        setCurrentContract(c)
+        if (c) {
+          setContractBankDetails({
+            bank_name: c.bank_name || 'Banco do Brasil (001)',
+            bank_agency: c.bank_agency || '1234-5',
+            bank_account: c.bank_account || '98765-4',
+            bank_pix_key: c.bank_pix_key || c.contracted_carrier_document || '',
+            beneficiary_name: c.bank_beneficiary_name || c.contracted_carrier_name || '',
+            beneficiary_doc: c.bank_beneficiary_doc || c.contracted_carrier_document || '',
+          })
+        }
+      })
+    } else {
+      setCurrentContract(null)
+    }
+  }, [selectedOrder])
+
+  // Gerar contrato CTRB
+  const handleGenerateContract = async () => {
+    if (!selectedOrder) return
+
+    // Validação preventiva no front: piso mínimo
+    const isBelowFloor =
+      selectedOrder.floor_applicable &&
+      (selectedOrder.floor_regularization_status === 'bloqueado_abaixo_piso' ||
+        selectedOrder.minimum_floor_status === 'abaixo_piso')
+
+    if (isBelowFloor) {
+      toast({
+        title: 'Bloqueio de Conformidade ANTT',
+        description:
+          'Não é permitido gerar o Contrato de Transporte (CTRB) enquanto o frete estiver abaixo do piso mínimo oficial sem regularização. Regularize o piso na etapa anterior.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsGeneratingContract(true)
+    try {
+      const res = await generateContract({
+        trip_id: selectedOrder.id,
+        template_id: selectedTemplateId || undefined,
+        bank_details: contractBankDetails,
+      })
+
+      if (!res.success) {
+        toast({
+          title: 'Não foi possível gerar o CTRB',
+          description: res.error || res.message,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      toast({
+        title: 'Contrato CTRB Emitido!',
+        description: res.message,
+      })
+
+      // Atualizar dados locais
+      const updatedContract = await getContractByTripId(selectedOrder.id)
+      setCurrentContract(updatedContract)
+      await loadData()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao gerar CTRB',
+        description: err instanceof Error ? err.message : 'Falha na comunicação com o servidor.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGeneratingContract(false)
+    }
+  }
+
+  // Solicitar Assinatura Eletrônica (honesta)
+  const handleRequestSignature = async (contractId: string) => {
+    try {
+      const res = await requestElectronicSignature(contractId)
+      toast({
+        title: 'Assinatura Eletrônica — Status',
+        description: res.message,
+        variant: res.success ? 'default' : 'destructive',
+      })
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao solicitar assinatura',
+        description:
+          err instanceof Error ? err.message : 'Falha ao processar assinatura eletrônica.',
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Carregar NF-es recebidas para a modal de nova ordem
   const handleOpenNfeModal = async () => {
@@ -510,6 +643,13 @@ export function OperationsCenterPage() {
           <TabsTrigger value="operations" className="data-[state=active]:bg-zinc-800 text-zinc-300">
             <Truck className="h-4 w-4 mr-2 text-cyan-400" />
             Esteira Operacional
+          </TabsTrigger>
+          <TabsTrigger
+            value="contracts_config"
+            className="data-[state=active]:bg-zinc-800 text-zinc-300"
+          >
+            <FileCheck2 className="h-4 w-4 mr-2 text-indigo-400" />
+            Modelos de Contrato CTRB
           </TabsTrigger>
           <TabsTrigger value="connectors" className="data-[state=active]:bg-zinc-800 text-zinc-300">
             <Radio className="h-4 w-4 mr-2 text-emerald-400" />
@@ -911,7 +1051,125 @@ export function OperationsCenterPage() {
           </div>
         </TabsContent>
 
-        {/* ABA 2: Conectores de Integração (Honestidade Técnica) */}
+        {/* ABA 2: Modelos Contratuais Configuráveis (Passo 4 CTRB) */}
+        <TabsContent value="contracts_config" className="space-y-5 mt-4">
+          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FileCheck2 className="h-5 w-5 text-indigo-400" />
+                  Modelos de Contrato de Transporte (CTRB) & Cláusulas
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Configure modelos com cláusulas jurídicas, preâmbulos e regras por perfil de
+                  contratação (TAC-Equiparado, TAC-Independente, ETC). A geração automática de CTRB
+                  utiliza o modelo vigente selecionado.
+                </p>
+              </div>
+
+              <Button
+                onClick={() => {
+                  setSelectedTemplateForEdit(null)
+                  setIsTemplateModalOpen(true)
+                }}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1.5"
+              >
+                <FileText className="h-4 w-4" />
+                Novo Modelo Contratual
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templatesList.map((tmpl) => {
+                let clausesCount = 0
+                if (Array.isArray(tmpl.clauses)) {
+                  clausesCount = tmpl.clauses.length
+                } else if (typeof tmpl.clauses === 'string') {
+                  try {
+                    clausesCount = JSON.parse(tmpl.clauses).length
+                  } catch (_) {
+                    clausesCount = 0
+                  }
+                }
+
+                return (
+                  <Card
+                    key={tmpl.id}
+                    className="border-zinc-800 bg-zinc-950/60 flex flex-col justify-between"
+                  >
+                    <CardHeader className="p-4 pb-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] uppercase font-bold text-indigo-400 border-indigo-500/30"
+                        >
+                          {tmpl.carrier_profile?.replace('_', ' ')}
+                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          {tmpl.is_default && (
+                            <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/30 text-[9px] uppercase font-bold">
+                              Padrão
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={
+                              tmpl.is_active
+                                ? 'text-emerald-400 border-emerald-500/30 text-[9px]'
+                                : 'text-zinc-500 border-zinc-700 text-[9px]'
+                            }
+                          >
+                            {tmpl.is_active ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <CardTitle className="text-sm font-bold text-zinc-100">
+                        {tmpl.title}
+                      </CardTitle>
+                      <CardDescription className="text-xs text-zinc-500 line-clamp-2">
+                        {tmpl.preamble_template || 'Modelo de contrato rodoviário regulamentar.'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2 text-xs space-y-3">
+                      <div className="p-2 rounded bg-zinc-900/80 border border-zinc-800/80 text-[11px] text-zinc-400 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Cláusulas Contratuais:</span>
+                          <strong className="text-zinc-200">{clausesCount} cláusulas</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Foro de Eleição:</span>
+                          <strong className="text-zinc-200">
+                            {tmpl.jurisdiction_city}/{tmpl.jurisdiction_state}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Versão Vigente:</span>
+                          <strong className="text-zinc-200">v{tmpl.version || 1}</strong>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 flex items-center justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedTemplateForEdit(tmpl)
+                            setIsTemplateModalOpen(true)
+                          }}
+                          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs w-full"
+                        >
+                          Editar Cláusulas e Termos
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ABA 3: Conectores de Integração (Honestidade Técnica) */}
         <TabsContent value="connectors" className="space-y-5 mt-4">
           <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
@@ -1148,6 +1406,245 @@ export function OperationsCenterPage() {
                   </div>
                 )}
 
+                {selectedStageKey === 'contrato' && (
+                  <div className="p-3 bg-indigo-950/30 border border-indigo-800/50 rounded-lg space-y-3 mb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-300 block text-xs flex items-center gap-1.5">
+                        <FileCheck2 className="h-4 w-4" />
+                        Contrato de Transporte Rodoviário de Bens (CTRB)
+                      </span>
+                      {currentContract ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
+                          {currentContract.contract_number}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-400 border-amber-500/30 text-[10px]"
+                        >
+                          Pendente de Geração
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Alerta de Bloqueio se o frete estiver abaixo do piso */}
+                    {selectedOrder?.floor_applicable &&
+                      (selectedOrder?.floor_regularization_status === 'bloqueado_abaixo_piso' ||
+                        selectedOrder?.minimum_floor_status === 'abaixo_piso') && (
+                        <div className="p-2.5 bg-rose-950/50 border border-rose-800 rounded text-xs text-rose-300 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block text-rose-200">
+                              Geração de Contrato Bloqueada:
+                            </strong>
+                            O valor do frete está abaixo do piso mínimo oficial ANTT. Acesse a etapa
+                            &quot;5. Piso Mínimo ANTT&quot; para regularizar o frete antes de emitir
+                            o CTRB.
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Resumo do Contrato se já gerado */}
+                    {currentContract ? (
+                      <div className="space-y-2 bg-zinc-950/60 p-3 rounded border border-zinc-800 text-xs">
+                        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                          <div>
+                            <span className="text-[10px] text-zinc-500 block uppercase">
+                              CTRB Emitido
+                            </span>
+                            <strong className="text-white font-mono text-sm">
+                              {currentContract.contract_number}
+                            </strong>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-zinc-500 block uppercase">
+                              Assinatura Eletrônica
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] uppercase font-bold text-amber-400 border-amber-500/30"
+                            >
+                              {currentContract.signature_status?.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400 pt-1">
+                          <div>
+                            <span className="text-zinc-500">Contratado:</span>{' '}
+                            <strong className="text-zinc-200">
+                              {currentContract.contracted_carrier_name}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Perfil:</span>{' '}
+                            <strong className="text-zinc-200 uppercase">
+                              {currentContract.carrier_profile?.replace('_', ' ')}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Frete Total:</span>{' '}
+                            <strong className="text-emerald-400">
+                              R$ {Number(currentContract.freight_value || 0).toFixed(2)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Adiantamento:</span>{' '}
+                            <strong className="text-zinc-200">
+                              R$ {Number(currentContract.advance_payment_value || 0).toFixed(2)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Banco:</span>{' '}
+                            <span className="text-zinc-300">
+                              {currentContract.bank_name || 'BB'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Chave PIX:</span>{' '}
+                            <span className="font-mono text-zinc-300">
+                              {currentContract.bank_pix_key || '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Botões de Ação para Contrato Existente */}
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
+                          <Button
+                            size="sm"
+                            onClick={() => setIsContractPdfModalOpen(true)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Visualizar & Baixar PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRequestSignature(currentContract.id)}
+                            className="border-amber-700/60 text-amber-300 hover:bg-amber-950/30 text-xs gap-1.5"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-amber-400" />
+                            Assinatura Eletrônica (Conectores)
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleGenerateContract}
+                            disabled={isGeneratingContract}
+                            className="text-zinc-400 hover:text-white text-xs gap-1"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${isGeneratingContract ? 'animate-spin' : ''}`}
+                            />
+                            Regerar CTRB (Anti-duplicação)
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Formulário de Geração de Contrato */
+                      <div className="space-y-3 bg-zinc-950/50 p-3 rounded border border-zinc-800 text-xs">
+                        <div className="text-[11px] text-zinc-400">
+                          Configure os dados bancários e o modelo de cláusulas para gerar o contrato
+                          com anti-duplicação:
+                        </div>
+
+                        {/* Seletor de Modelo */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                            Modelo Contratual Vigente:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={selectedTemplateId}
+                              onChange={(e) => setSelectedTemplateId(e.target.value)}
+                              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white"
+                            >
+                              {templatesList.map((tmpl) => (
+                                <option key={tmpl.id} value={tmpl.id}>
+                                  {tmpl.title} ({tmpl.carrier_profile.toUpperCase()})
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const found =
+                                  templatesList.find((t) => t.id === selectedTemplateId) || null
+                                setSelectedTemplateForEdit(found)
+                                setIsTemplateModalOpen(true)
+                              }}
+                              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs shrink-0"
+                            >
+                              Editar Cláusulas
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Dados Bancários */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <span className="text-[10px] text-zinc-500 block">
+                              Instituição Bancária:
+                            </span>
+                            <input
+                              type="text"
+                              value={contractBankDetails.bank_name}
+                              onChange={(e) =>
+                                setContractBankDetails({
+                                  ...contractBankDetails,
+                                  bank_name: e.target.value,
+                                })
+                              }
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-zinc-500 block">
+                              Chave PIX do Transportador:
+                            </span>
+                            <input
+                              type="text"
+                              value={contractBankDetails.bank_pix_key}
+                              onChange={(e) =>
+                                setContractBankDetails({
+                                  ...contractBankDetails,
+                                  bank_pix_key: e.target.value,
+                                })
+                              }
+                              placeholder="CPF, CNPJ, E-mail ou Telefone"
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <Button
+                            size="sm"
+                            onClick={handleGenerateContract}
+                            disabled={
+                              isGeneratingContract ||
+                              (selectedOrder?.floor_applicable &&
+                                (selectedOrder?.floor_regularization_status ===
+                                  'bloqueado_abaixo_piso' ||
+                                  selectedOrder?.minimum_floor_status === 'abaixo_piso'))
+                            }
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs gap-1.5"
+                          >
+                            <FileCheck2
+                              className={`h-3.5 w-3.5 ${isGeneratingContract ? 'animate-spin' : ''}`}
+                            />
+                            {isGeneratingContract
+                              ? 'Gerando CTRB...'
+                              : 'Gerar Contrato de Transporte (CTRB)'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {selectedStageKey === 'piso_minimo' && (
                   <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 rounded-lg space-y-3 mb-2">
                     <div className="flex items-center justify-between">
@@ -1381,6 +1878,26 @@ export function OperationsCenterPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Modal 3: Visualização e Impressão de CTRB (Passo 4) */}
+      <ContractPdfModal
+        contract={currentContract}
+        open={isContractPdfModalOpen}
+        onOpenChange={setIsContractPdfModalOpen}
+        onRequestSignature={handleRequestSignature}
+      />
+
+      {/* Modal 4: Edição/Criação de Modelo Contratual Configurável */}
+      <ContractTemplateModal
+        template={selectedTemplateForEdit}
+        open={isTemplateModalOpen}
+        onOpenChange={setIsTemplateModalOpen}
+        onSaved={async (saved) => {
+          const tmpls = await getContractTemplates()
+          setTemplatesList(tmpls)
+          setSelectedTemplateId(saved.id)
+        }}
+      />
     </div>
   )
 }

@@ -36,6 +36,18 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
         'Permite reprocessar uma etapa específica que retornou rejeição ou inconsistência externa (ex: erro de schema no CT-e ou timeout de IPEF).',
     },
     {
+      name: 'Etapa 7 "Contrato / CTRB" & Modal de Impressão PDF',
+      type: 'Geração Documental / PDF',
+      description:
+        'Gera o Contrato de Transporte Rodoviário de Bens (CTRB) a partir da Ordem de Transporte, dados bancários e modelo vigente. Inclui botão de impressão e download em formato padrão A4 operacional (não fiscal).',
+    },
+    {
+      name: 'Aba "Modelos de Contrato CTRB"',
+      type: 'Configuração Administrativa',
+      description:
+        'Permite ao administrador criar e editar modelos contratuais, cláusulas jurídicas dinâmicas, preâmbulos e regras por modalidade de contratação (TAC-Equiparado, TAC-Independente, ETC).',
+    },
+    {
       name: 'Aba "Conectores de Integração"',
       type: 'Visualização de Contratos',
       description:
@@ -50,7 +62,9 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
   ],
   businessRules: [
     'Regra Anti-Duplicação: Uma chave de acesso de NF-e só pode gerar uma única Ordem de Transporte ativa.',
-    'Regra de Piso Mínimo (Resolução ANTT nº 5.867/2019): O frete acordado é comparado à tabela vigente de custo por quilômetro e eixos. Se for menor, a liberação é bloqueada ou sinalizada para aprovação de diretoria.',
+    'Regra de Piso Mínimo (Resolução ANTT nº 5.867/2019): O frete acordado é comparado à tabela vigente de custo por quilômetro e eixos. Se for menor ("bloqueado_abaixo_piso"), a geração do Contrato de Transporte (CTRB) é estritamente bloqueada até regularização.',
+    'Regra Anti-Duplicação do CTRB: Regenerar o mesmo contrato para a mesma Ordem de Transporte atualiza o documento existente e incrementa a versão, sem criar registros duplicados.',
+    'Assinatura Eletrônica Honesta: Sem provedor jurídico ativo (Clicksign/DocuSign), exibe "Aguardando configuração" na Central de Conectores, sem falsa simulação de documento assinado.',
     'Regra do VPO (Lei nº 10.209/2001): O Vale-Pedágio Obrigatório é responsabilidade do embarcador e deve ser pago antes do início da viagem através de dispositivo eletrônico (TAG ou cartão IPEF).',
     'Conectores Transparentes: Em hipótese alguma simula autorização fiscal da SEFAZ ou concessão de crédito financeiro. Serviços sem token ativo exibem "Aguardando configuração".',
     'Isolamento e Auditoria: Toda alteração de status ou avanço de etapa é persistida com timestamp, IP e usuário responsável na coleção audit_logs.',

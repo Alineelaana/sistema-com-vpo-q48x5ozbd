@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T02:44:34.391Z",
+  "generatedAt": "2026-10-31T03:10:09.753Z",
   "collections": [
     {
       "name": "users",
@@ -1782,7 +1782,12 @@
             "floor_calculate",
             "floor_regularize",
             "floor_table_import",
-            "floor_table_set_current"
+            "floor_table_set_current",
+            "contract_generate",
+            "contract_update",
+            "contract_template_create",
+            "contract_template_update",
+            "contract_signature_request"
           ]
         },
         {
@@ -4009,6 +4014,579 @@
       "indexes": [
         "CREATE INDEX idx_piso_coef_table ON piso_minimo_coeficientes (table_id)",
         "CREATE INDEX idx_piso_coef_lookup ON piso_minimo_coeficientes (table_id, table_type, cargo_category, axles)"
+      ]
+    },
+    {
+      "name": "contract_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "carrier_profile",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["tac_independente", "tac_equiparado", "etc", "ctc", "geral"]
+        },
+        {
+          "name": "transport_mode",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["lotacao", "fracionada", "dedicado", "subcontratacao", "todos"]
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_default",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preamble_template",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "clauses",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsibilities_text",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "penalty_terms_text",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "jurisdiction_city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "jurisdiction_state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ctmpl_profile ON contract_templates (carrier_profile)",
+        "CREATE INDEX idx_ctmpl_active ON contract_templates (is_active)"
+      ]
+    },
+    {
+      "name": "transport_contracts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "trip_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trips"
+        },
+        {
+          "name": "template_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contract_templates"
+        },
+        {
+          "name": "contract_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "operation_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trip_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["emitido", "assinado", "aguardando_assinatura", "cancelado"]
+        },
+        {
+          "name": "contractor_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contractor_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contractor_rntrc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contractor_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_carrier_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_carrier_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_carrier_rntrc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_profile",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["tac_independente", "tac_equiparado", "etc", "ctc", "frota_propria"]
+        },
+        {
+          "name": "carrier_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carrier_phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_agency",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_account",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_pix_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_beneficiary_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_beneficiary_doc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_cnh",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate_2",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_model",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "axles_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cargo_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cargo_weight_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cargo_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nfe_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nfe_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origin_city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origin_state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "destination_city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "destination_state",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "distance_km",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "route_highways",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pickup_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_address",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "freight_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "minimum_floor_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "minimum_floor_table_version",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "minimum_floor_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_terms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "advance_payment_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balance_payment_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_voucher_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_responsible",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_policy_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_averbacao_protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "clauses_snapshot",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsibilities_text",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "penalty_terms_text",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "jurisdiction",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signature_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "aguardando_configuracao",
+            "pendente_assinatura",
+            "assinado",
+            "dispensado"
+          ]
+        },
+        {
+          "name": "signature_provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signature_document_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signature_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signed_by_carrier_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signed_by_contractor_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "generated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "generated_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_contracts_trip ON transport_contracts (trip_id)",
+        "CREATE UNIQUE INDEX idx_contracts_num ON transport_contracts (contract_number)",
+        "CREATE INDEX idx_contracts_status ON transport_contracts (status)"
       ]
     }
   ]
