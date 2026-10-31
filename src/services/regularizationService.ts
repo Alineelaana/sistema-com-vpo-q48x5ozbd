@@ -21,6 +21,58 @@ export interface FiscalTransmissionResponse {
   accessKey?: string
   protocol?: string
   xml?: string
+  already_authorized?: boolean
+}
+
+export interface PrepareCteResponse {
+  success: boolean
+  message: string
+  already_authorized?: boolean
+  cte?: Partial<CteDocument>
+  error?: string
+}
+
+export interface PrepareMdfeResponse {
+  success: boolean
+  message: string
+  already_authorized?: boolean
+  mdfe?: Partial<MdfeDocument>
+  error?: string
+}
+
+// -------------------------------------------------------------
+// Preparação Automática de CT-e e MDF-e
+// -------------------------------------------------------------
+export async function prepareCteFromTrip(tripId: string): Promise<PrepareCteResponse> {
+  try {
+    return await pb.send<PrepareCteResponse>('/backend/v1/regularization/cte/prepare-from-trip', {
+      method: 'POST',
+      body: { trip_id: tripId },
+    })
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Falha na preparação do CT-e'
+    return {
+      success: false,
+      message: errorMsg,
+      error: errorMsg,
+    }
+  }
+}
+
+export async function prepareMdfeFromTrip(tripId: string): Promise<PrepareMdfeResponse> {
+  try {
+    return await pb.send<PrepareMdfeResponse>('/backend/v1/regularization/mdfe/prepare-from-trip', {
+      method: 'POST',
+      body: { trip_id: tripId },
+    })
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Falha na preparação do MDF-e'
+    return {
+      success: false,
+      message: errorMsg,
+      error: errorMsg,
+    }
+  }
 }
 
 // -------------------------------------------------------------

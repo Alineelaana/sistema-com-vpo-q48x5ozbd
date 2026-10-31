@@ -30,6 +30,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ScreenLogicModal } from '@/components/ScreenLogicModal'
 import { MDFE_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
+import { DamdfePdfModal } from '@/components/DamdfePdfModal'
 import {
   getMdfeDocuments,
   transmitMdfe,
@@ -37,6 +38,7 @@ import {
   cancelMdfe,
   createMdfeDocument,
   getTripsForFiscalSelection,
+  prepareMdfeFromTrip,
 } from '@/services/regularizationService'
 import { getCteDocuments } from '@/services/regularizationService'
 import type { MdfeDocument, Trip, CteDocument } from '@/types/logistics'
@@ -53,6 +55,8 @@ import {
   FileCheck2,
   Ban,
   FileText,
+  Printer,
+  Sparkles,
 } from 'lucide-react'
 
 export function MdfePage() {
@@ -66,8 +70,11 @@ export function MdfePage() {
   const [logicModalOpen, setLogicModalOpen] = useState(false)
   const [viewDoc, setViewDoc] = useState<MdfeDocument | null>(null)
   const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [damdfeModalOpen, setDamdfeModalOpen] = useState(false)
+  const [damdfeDoc, setDamdfeDoc] = useState<MdfeDocument | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [transmittingId, setTransmittingId] = useState<string | null>(null)
+  const [preparingTripId, setPreparingTripId] = useState<string | null>(null)
 
   const [formTripId, setFormTripId] = useState('')
   const [formOrigin, setFormOrigin] = useState('SP')
@@ -401,9 +408,22 @@ export function MdfePage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
+                          setDamdfeDoc(doc)
+                          setDamdfeModalOpen(true)
+                        }}
+                        title="Visualizar / Imprimir DAMDFE"
+                      >
+                        <Printer className="h-4 w-4 text-indigo-600" />
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
                           setViewDoc(doc)
                           setViewModalOpen(true)
                         }}
+                        title="Ver Detalhes do Manifesto"
                       >
                         <Eye className="h-4 w-4 text-slate-600" />
                       </Button>
@@ -640,6 +660,19 @@ export function MdfePage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal DAMDFE Completo */}
+      <DamdfePdfModal
+        mdfe={damdfeDoc}
+        open={damdfeModalOpen}
+        onOpenChange={setDamdfeModalOpen}
+        onSendDocument={(doc) => {
+          toast({
+            title: 'Documento encaminhado ao Agente de Envio',
+            description: `DAMDFE do MDF-e nº ${doc.mdfe_number} adicionado à esteira de envio de documentos.`,
+          })
+        }}
+      />
 
       <ScreenLogicModal
         open={logicModalOpen}

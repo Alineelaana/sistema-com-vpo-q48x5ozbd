@@ -500,38 +500,62 @@ routerAdd(
           stageResult.message = stages.roteirizacao.message
         }
       } else if (targetStage === 'cte') {
-        const ctes = e.app.findRecordsByFilter(
-          'cte_documents',
-          `trip_id = '${tripId}'`,
-          '-created',
-          1,
-          0,
-        )
-        if (ctes.length > 0) {
-          const cte = ctes[0]
-          const isAuth = cte.getString('status') === 'authorized'
+        // Verificar bloqueio do piso mínimo ANTT antes de processar etapa CT-e
+        const floorRegStatus = trip.getString('floor_regularization_status')
+        const minFloorStatus = trip.getString('minimum_floor_status')
+        const floorApplicable = trip.getBool('floor_applicable')
+        const isFloorBlocked =
+          floorApplicable &&
+          (floorRegStatus === 'bloqueado_abaixo_piso' || minFloorStatus === 'abaixo_piso')
+
+        if (isFloorBlocked) {
           stages.cte = {
-            status: isAuth ? 'concluida' : 'requer_atencao',
-            updated_at: nowIso,
-            message: isAuth
-              ? `CT-e nº ${cte.getInt('cte_number')} autorizado pela SEFAZ (Protocolo: ${cte.getString('protocol')}).`
-              : `CT-e nº ${cte.getInt('cte_number')} na fila da SEFAZ (${cte.getString('status_message') || 'aguardando transmissão'}).`,
-            details: {
-              cte_id: cte.id,
-              cte_number: cte.getInt('cte_number'),
-              status: cte.getString('status'),
-            },
-          }
-          stageResult.message = stages.cte.message
-        } else {
-          stages.cte = {
-            status: 'requer_atencao',
+            status: 'erro',
             updated_at: nowIso,
             message:
-              'Nenhum CT-e gerado ainda para esta ordem. Transmita o conhecimento pela tela Fiscal.',
-            details: {},
+              'Emissão de CT-e bloqueada: frete contratado abaixo do piso mínimo obrigatório da ANTT (Lei 13.703/18). Regularize o frete antes de emitir o documento fiscal.',
+            details: { blocked_by: 'piso_minimo' },
           }
           stageResult.message = stages.cte.message
+          stageResult.success = false
+        } else {
+          const ctes = e.app.findRecordsByFilter(
+            'cte_documents',
+            `trip_id = '${tripId}'`,
+            '-created',
+            1,
+            0,
+          )
+          if (ctes.length > 0) {
+            const cte = ctes[0]
+            const isAuth = cte.getString('status') === 'authorized'
+            const isRej = cte.getString('status') === 'rejected'
+            stages.cte = {
+              status: isAuth ? 'concluida' : isRej ? 'erro' : 'requer_atencao',
+              updated_at: nowIso,
+              message: isAuth
+                ? `CT-e nº ${cte.getInt('cte_number')} autorizado pela SEFAZ (Protocolo: ${cte.getString('protocol')}).`
+                : isRej
+                  ? `CT-e nº ${cte.getInt('cte_number')} rejeitado pela SEFAZ: ${cte.getString('status_message') || 'Rejeição cadastral'}.`
+                  : `CT-e nº ${cte.getInt('cte_number')} na fila (${cte.getString('status_message') || 'Aguardando configuração de provedor'}).`,
+              details: {
+                cte_id: cte.id,
+                cte_number: cte.getInt('cte_number'),
+                status: cte.getString('status'),
+                protocol: cte.getString('protocol') || '',
+              },
+            }
+            stageResult.message = stages.cte.message
+          } else {
+            stages.cte = {
+              status: 'requer_atencao',
+              updated_at: nowIso,
+              message:
+                'Nenhum CT-e gerado ainda para esta ordem. Prepare o documento a partir da Ordem de Transporte.',
+              details: {},
+            }
+            stageResult.message = stages.cte.message
+          }
         }
       } else if (targetStage === 'ciot') {
         const ciots = e.app.findRecordsByFilter(
@@ -597,16 +621,21 @@ routerAdd(
         if (mdfes.length > 0) {
           const mdfe = mdfes[0]
           const isAuth = mdfe.getString('status') === 'authorized'
+          const isRej = mdfe.getString('status') === 'rejected'
           stages.mdfe = {
-            status: isAuth ? 'concluida' : 'requer_atencao',
+            status: isAuth ? 'concluida' : isRej ? 'erro' : 'requer_atencao',
             updated_at: nowIso,
             message: isAuth
-              ? `MDF-e nº ${mdfe.getInt('mdfe_number')} autorizado perante a SEFAZ.`
-              : `MDF-e nº ${mdfe.getInt('mdfe_number')} em status ${mdfe.getString('status')}. Percurso alimentado pela rota.`,
+              ? `MDF-e nº ${mdfe.getInt('mdfe_number')} autorizado perante a SEFAZ (Protocolo: ${mdfe.getString('protocol')}).`
+              : isRej
+                ? `MDF-e nº ${mdfe.getInt('mdfe_number')} rejeitado pela SEFAZ: ${mdfe.getString('status_message') || 'Rejeição cadastral'}.`
+                : `MDF-e nº ${mdfe.getInt('mdfe_number')} em status ${mdfe.getString('status')}. IDVPO: ${mdfe.getString('vpo_idvpo') || 'Pendente'}.`,
             details: {
               mdfe_id: mdfe.id,
               status: mdfe.getString('status'),
               route_ufs: mdfe.getString('route_ufs'),
+              vpo_idvpo: mdfe.getString('vpo_idvpo'),
+              protocol: mdfe.getString('protocol') || '',
             },
           }
           stageResult.message = stages.mdfe.message
@@ -614,7 +643,7 @@ routerAdd(
           stages.mdfe = {
             status: 'pendente',
             updated_at: nowIso,
-            message: 'MDF-e será gerado assim que o CT-e for autorizado.',
+            message: 'MDF-e será gerado a partir da rota e CT-e autorizados.',
             details: {},
           }
           stageResult.message = stages.mdfe.message

@@ -32,6 +32,7 @@ import {
 import type { CteDocument, Trip } from '@/types/logistics'
 import { ScreenLogicModal } from '@/components/ScreenLogicModal'
 import { CTE_SCREEN_LOGIC_DOC } from '@/docs/screenDocs'
+import { DactePdfModal } from '@/components/DactePdfModal'
 import {
   FileText,
   Plus,
@@ -46,6 +47,8 @@ import {
   Send,
   ShieldCheck,
   RefreshCw,
+  Printer,
+  Sparkles,
 } from 'lucide-react'
 
 export const CtePage: React.FC = () => {
@@ -69,6 +72,9 @@ export const CtePage: React.FC = () => {
   // Visualizador de CT-e / DACTE simplificado
   const [viewDoc, setViewDoc] = useState<CteDocument | null>(null)
   const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [dacteModalOpen, setDacteModalOpen] = useState(false)
+  const [dacteDoc, setDacteDoc] = useState<CteDocument | null>(null)
+  const [preparingTripId, setPreparingTripId] = useState<string | null>(null)
 
   // Emissão manual de CT-e
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -159,6 +165,36 @@ export const CtePage: React.FC = () => {
     }
   }
 
+  const handlePrepareFromTrip = async (tripId: string) => {
+    setPreparingTripId(tripId)
+    try {
+      const { prepareCteFromTrip } = await import('@/services/regularizationService')
+      const res = await prepareCteFromTrip(tripId)
+      if (res.success) {
+        toast({
+          title: 'CT-e preparado com sucesso!',
+          description: res.message,
+        })
+        loadData()
+      } else {
+        toast({
+          title: 'Não foi possível preparar o CT-e',
+          description: res.error || res.message,
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha na preparação automática'
+      toast({
+        title: 'Erro na preparação',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setPreparingTripId(null)
+    }
+  }
+
   const handleTransmitCte = async (doc: CteDocument) => {
     if (doc.status === 'authorized') {
       toast({
@@ -169,7 +205,6 @@ export const CtePage: React.FC = () => {
     }
     setTransmittingId(doc.id)
     try {
-      // Import dynamic or direct call
       const { transmitCte } = await import('@/services/regularizationService')
       const res = await transmitCte(doc.id)
       if (res.status === 'authorized') {
@@ -420,13 +455,27 @@ export const CtePage: React.FC = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
+                          setDacteDoc(doc)
+                          setDacteModalOpen(true)
+                        }}
+                        title="Visualizar / Imprimir DACTE"
+                      >
+                        <Printer className="h-4 w-4 text-indigo-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
                           setViewDoc(doc)
                           setViewModalOpen(true)
                         }}
+                        title="Ver Detalhes do Documento"
                       >
                         <Eye className="h-4 w-4 text-slate-600" />
                       </Button>
-                      {doc.status === 'pending' && (
+                      {(doc.status === 'pending' ||
+                        doc.status === 'draft' ||
+                        doc.status === 'rejected') && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -759,6 +808,19 @@ export const CtePage: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal DACTE Completo */}
+      <DactePdfModal
+        cte={dacteDoc}
+        open={dacteModalOpen}
+        onOpenChange={setDacteModalOpen}
+        onSendDocument={(doc) => {
+          toast({
+            title: 'Documento encaminhado ao Agente de Envio',
+            description: `DACTE do CT-e nº ${doc.cte_number} adicionado à esteira de envio de documentos.`,
+          })
+        }}
+      />
 
       <ScreenLogicModal
         open={logicModalOpen}

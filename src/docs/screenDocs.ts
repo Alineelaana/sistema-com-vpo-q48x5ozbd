@@ -353,89 +353,102 @@ export const TRIPS_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
 }
 
 export const CTE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
-  screenTitle: 'Documentos Fiscais (CT-e)',
-  screenBadge: 'Fiscal • Conhecimento de Frete',
-  lastUpdate: '2026-10-29',
-  version: '2.1.0',
+  screenTitle: 'Documentos Fiscais (CT-e Modelo 57) — Passo 5',
+  screenBadge: 'Fiscal • Conhecimento de Frete & VPO',
+  lastUpdate: '2026-11-05',
+  version: '3.0.0',
   objective:
-    'Gerenciamento e emissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) via Provedor Fiscal Certificado (Nuvem Fiscal real). Transmissão sem qualquer simulação: documentos permanecem na fila enquanto aguardam resposta oficial da SEFAZ. Uma vez autorizados oficialmente, alimentam a Etapa 4 da Central de Agentes para envio automático aos destinatários (tomador/remetente/destinatário) com DACTE e XML.',
+    'Preparação automática a partir da Ordem de Transporte, validação e transmissão de Conhecimentos de Transporte Eletrônicos (CT-e Modelo 57) via Provedor Fiscal Certificado (Nuvem Fiscal real). Transmissão sem qualquer simulação: documentos permanecem com status honesto "Aguardando configuração" caso não haja credenciais na tela Empresa. Possui bloqueio estrito quando o frete violar o piso mínimo ANTT (Lei 13.703/18), geração de DACTE oficial em PDF e encaminhamento ao Agente de Despacho de Documentos.',
   realFeatures: [
-    'Transmissão para a SEFAZ através da API oficial Nuvem Fiscal (provedores Focus NFe e TecnoSpeed com interfaces preparadas)',
-    'Destaque obrigatório e legal do Vale Pedágio Obrigatório (VPO)',
-    'Tratamento honesto de status: Em Fila, Pendente SEFAZ, Autorizado e Rejeitado com mensagem do motivo oficial',
-    'DACTE demonstrativo com protocolo e chave de acesso oficial',
-    'Salvaguarda: documentos já autorizados são bloqueados contra retransmissão indevida',
-    'Integração com Etapa 4 de Envio: apenas CT-es com status authorized são despachados aos destinatários cadastrados com proteção anti-duplicação',
+    'Preparação automática completa da Ordem de Transporte: emitente, tomador, remetente, destinatário, NF-e vinculadas, CFOP, frete, VPO incluso e informações complementares',
+    'Bloqueio estrito de preparação e emissão de CT-e para fretes abaixo do piso mínimo obrigatório da ANTT sem regularização aprovada',
+    'Transmissão real para a SEFAZ através da API oficial Nuvem Fiscal (Focus NFe e TecnoSpeed com interfaces preparadas)',
+    'Destaque obrigatório e legal do Vale Pedágio Obrigatório (VPO) conforme a Lei Federal nº 10.209/2001',
+    'Tratamento honesto de status: Rascunho, Na Fila, Autorizado e Rejeitado com exibição transparente do motivo oficial',
+    'DACTE completo em PDF com visualização, download de XML, impressão e envio para trânsito',
+    'Salvaguarda anti-duplicidade: documentos já autorizados são bloqueados contra retransmissão, e reenvios atualizam a mesma chave operacional',
   ],
   fieldsAndButtons: [
+    {
+      name: 'Preparar CT-e da Ordem',
+      type: 'Botão de Ação Automática',
+      purpose: 'Preenche instantaneamente todos os dados do CT-e a partir da viagem aprovada.',
+    },
     {
       name: 'Transmitir à SEFAZ',
       type: 'Botão de Ação Fiscal',
       purpose: 'Envia o CT-e à SEFAZ através do backend hook com credenciais seguras.',
     },
     {
-      name: 'Visualizar DACTE',
-      type: 'Ação na Linha',
-      purpose: 'Visualização dos dados fiscais do conhecimento com destaque de VPO.',
+      name: 'Visualizar / Imprimir DACTE',
+      type: 'Ação na Linha / Modal PDF',
+      purpose: 'Gera o Documento Auxiliar em formato A4 oficial com download e envio.',
     },
     {
       name: 'Lógica da Tela',
       type: 'Botão de Auditoria',
-      purpose:
-        'Documenta o que está integrado de forma real e o que depende de credenciais de provedor.',
+      purpose: 'Documenta as regras de integridade e o funcionamento real do módulo.',
     },
   ],
   businessRules: [
-    'Regra Inegociável: NUNCA simular autorização fiscal. Sem credenciais cadastradas na tela Empresa, o CT-e permanece na fila como aguardando transmissão.',
+    'Regra Inegociável: NUNCA simular autorização fiscal. Sem credenciais cadastradas na tela Empresa, o CT-e permanece na fila como aguardando configuração.',
+    'Frete abaixo do piso mínimo ANTT bloqueia peremptoriamente a emissão do CT-e.',
     'CIOT e VPO são obrigações distintas e segregadas.',
-    'CT-e autorizado perante a SEFAZ nunca pode ser retransmitido.',
-    'Apenas CT-e autorizado na SEFAZ pode ser despachado aos destinatários pela Etapa 4 (Agente de Envio Automático).',
+    'CT-e autorizado perante a SEFAZ nunca pode ser retransmitido nem duplicado.',
   ],
   agentsAndAutomations: [
-    'Orquestrador da Etapa 3 processa viagens da Etapa 2 gerando CT-es na fila para emissão.',
-    'Agente de Envio (Etapa 4 / hook dispatch_agent.pb.js) detecta CT-es autorizados e dispara e-mails aos contatos cadastrados.',
+    'Orquestrador da Esteira e hook fiscal_regularization.pb.js preparam e transmitem conhecimentos.',
+    'Agente de Envio Automático detecta CT-es autorizados e dispara DACTE/XML aos destinatários cadastrados.',
   ],
-  validations: ['Validação de remetente, destinatário, valor da carga, frete e ambiente da SEFAZ.'],
-  integrations: [
-    'Coleções cte_documents, trips, company_settings, document_dispatch_logs e Nuvem Fiscal API.',
+  validations: [
+    'Validação de remetente, destinatário, valor da carga, frete, piso mínimo e ambiente SEFAZ.',
   ],
+  integrations: ['Coleções cte_documents, trips, company_settings, audit_logs e Nuvem Fiscal API.'],
   flowsAndDependencies: [
-    'CT-es autorizados alimentam a montagem de MDF-e na Etapa 3 e o despacho automático por e-mail na Etapa 4.',
+    'CT-e autorizado é pré-requisito indispensável para a transmissão e autorização do MDF-e.',
   ],
   dataSourceAndDestination: {
-    origin: 'Viagens operacionais e dados fiscais de embarcadores.',
-    destination: 'Coleção cte_documents e SEFAZ.',
+    origin: 'Ordens de Transporte aprovadas e parâmetros fiscais da transportadora.',
+    destination: 'Coleção cte_documents e SEFAZ Estadual.',
     persistence: 'Banco SQLite via PocketBase.',
   },
   permissions: [{ role: 'Fiscal e Admin', access: 'Emissão e transmissão de conhecimentos.' }],
-  notificationsAndErrors: ['Rejeições da SEFAZ com código e motivo legível para saneamento.'],
+  notificationsAndErrors: [
+    'Rejeições da SEFAZ com código e motivo legível para saneamento sem duplicação.',
+  ],
 }
 
 export const MDFE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
-  screenTitle: 'Manifesto Eletrônico de Documentos Fiscais (MDF-e)',
+  screenTitle: 'Manifesto Eletrônico de Documentos Fiscais (MDF-e Modelo 58) — Passo 5',
   screenBadge: 'Fiscal & VPO • Modelo 58',
-  lastUpdate: '2026-10-29',
-  version: '1.1.0',
+  lastUpdate: '2026-11-05',
+  version: '2.0.0',
   objective:
-    'Consolidação de cargas e manifesto de documentos fiscais eletrônicos (modelo 58) para transporte interestadual, agrupando exclusivamente CT-es autorizados. Quando autorizado, integra com a Etapa 4 para envio automático do DAMDFE e XML aos responsáveis da rota e transportador.',
+    'Preparação automática a partir da rota aprovada e CT-e autorizado, com inclusão obrigatória do IDVPO no campo nCompra do grupo de Vale-Pedágio Obrigatório (layout vigente SEFAZ modelo 58), transmissão real via provedor fiscal, geração do DAMDFE oficial em PDF e encerramento no destino.',
   realFeatures: [
-    'Consolidação automática dos CT-es autorizados da viagem',
-    'Transmissão via Nuvem Fiscal ou enfileiramento seguro na ausência de credenciais',
-    'Definição e validação do percurso interestadual de UFs',
-    'Encerramento do manifesto no destino e cancelamento dentro dos prazos legais',
-    'Visualização simplificada de DAMDFE com protocolo e chaves vinculadas',
-    'Elegibilidade para Etapa 4: manifesto com status authorized é enviado automaticamente aos contatos cadastrados para MDF-e',
+    'Preparação automática a partir da Ordem de Transporte e da rota aprovada no Roteirizador Inteligente',
+    'Preenchimento obrigatório do IDVPO no campo nCompra do grupo valePed (disp) no layout oficial',
+    'Segregação estrita entre CIOT e Vale-Pedágio Obrigatório no modal rodoviário',
+    'Consolidação exclusiva de CT-es previamente autorizados com protocolo oficial da SEFAZ',
+    'Transmissão via Nuvem Fiscal ou status honesto "Aguardando configuração" sem inventar protocolos',
+    'DAMDFE oficial em PDF com layout A4 para trânsito da carga e fiscalização em pista',
+    'Encerramento do manifesto perante a SEFAZ na UF de destino, liberando o veículo',
   ],
   fieldsAndButtons: [
     {
-      name: 'Novo MDF-e',
-      type: 'Botão de Ação',
-      purpose: 'Gera rascunho de manifesto a partir de uma viagem com CT-es autorizados.',
+      name: 'Preparar MDF-e com IDVPO',
+      type: 'Botão de Ação Automática',
+      purpose: 'Gera rascunho com dados da rota, condutor, veículo e IDVPO no campo nCompra.',
     },
     {
       name: 'Transmitir à SEFAZ',
       type: 'Ação na Linha / Modal',
       purpose: 'Envia o manifesto para autorização junto ao provedor fiscal conectado.',
+    },
+    {
+      name: 'Visualizar / Imprimir DAMDFE',
+      type: 'Ação na Linha / Modal PDF',
+      purpose: 'Abre o Documento Auxiliar com visualização, download de XML e envio.',
     },
     {
       name: 'Encerrar Manifesto',
@@ -444,28 +457,33 @@ export const MDFE_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     },
   ],
   businessRules: [
-    'Só podem ser consolidados no MDF-e documentos (CT-e) com status autorizado na SEFAZ.',
-    'Nunca simular autorização fiscal: manifesto sem resposta oficial fica retido como fila/rascunho.',
-    'Envio da Etapa 4 restrito a manifestos autorizados, bloqueando envio de rascunhos ou manifestos pendentes.',
+    'Transmissão exige CT-e previamente autorizado na SEFAZ; manifesto sem CT-e autorizado é bloqueado.',
+    'O campo nCompra do grupo de Vale-Pedágio deve carregar o IDVPO gerado na operação de VPO da viagem.',
+    'Nunca simular autorização fiscal: manifesto sem resposta oficial fica retido com status honesto.',
+    'O encerramento perante a SEFAZ no destino é obrigatório antes da emissão de novo manifesto para o veículo.',
   ],
   agentsAndAutomations: [
-    'Agente de regularização fiscal cria automaticamente o rascunho de MDF-e após CT-e pronto.',
-    'Agente de Envio Automático (Etapa 4) despacha DAMDFE e XML oficial aos condutores e expedição cadastrados.',
+    'Hook fiscal_regularization.pb.js e orquestrador de operações geram e transmitem o manifesto.',
+    'Agente de Envio Automático despacha DAMDFE e XML oficial aos condutores e expedição cadastrados.',
   ],
-  validations: ['Obrigatoriedade de UFs de origem, destino e percurso compatíveis com a rota.'],
+  validations: [
+    'Obrigatoriedade de percurso interestadual de UFs, placas de tração, CPF de condutor e IDVPO.',
+  ],
   integrations: [
-    'Coleções mdfe_documents, cte_documents, trips, vehicles, drivers e document_dispatch_logs.',
+    'Coleções mdfe_documents, cte_documents, trips, vehicles, drivers e company_settings.',
   ],
   flowsAndDependencies: [
-    'Depende de CT-es autorizados para transmissão e alimenta o envio de documentos da rota na Etapa 4.',
+    'Depende de CT-es autorizados para transmissão e libera o despacho e saída da viagem na Esteira.',
   ],
   dataSourceAndDestination: {
-    origin: 'CT-es autorizados da viagem.',
-    destination: 'Coleção mdfe_documents e SEFAZ.',
+    origin: 'Rota aprovada, veículos e CT-es autorizados da viagem.',
+    destination: 'Coleção mdfe_documents e SEFAZ Virtual.',
     persistence: 'Banco SQLite via PocketBase.',
   },
   permissions: [{ role: 'Fiscal e Operador', access: 'Emissão, encerramento e consulta.' }],
-  notificationsAndErrors: ['Avisos de necessidade de encerramento antes de novas viagens.'],
+  notificationsAndErrors: [
+    'Avisos de necessidade de encerramento antes de novas viagens e rejeições SEFAZ.',
+  ],
 }
 
 export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {

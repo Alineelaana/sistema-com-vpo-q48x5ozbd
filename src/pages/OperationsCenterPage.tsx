@@ -56,6 +56,8 @@ import {
 } from '@/services/contractService'
 import { ContractPdfModal } from '@/components/ContractPdfModal'
 import { ContractTemplateModal } from '@/components/ContractTemplateModal'
+import { DactePdfModal } from '@/components/DactePdfModal'
+import { DamdfePdfModal } from '@/components/DamdfePdfModal'
 import type { TransportContract, ContractTemplate } from '@/types/contract'
 import {
   ConnectorContract,
@@ -63,7 +65,17 @@ import {
   TripWorkflowStages,
   WorkflowStageInfo,
   WorkflowStageStatus,
+  CteDocument,
+  MdfeDocument,
 } from '@/types/logistics'
+import {
+  prepareCteFromTrip,
+  prepareMdfeFromTrip,
+  transmitCte,
+  transmitMdfe,
+  getCteDocuments,
+  getMdfeDocuments,
+} from '@/services/regularizationService'
 import { ReceivedFiscalDocument } from '@/types/cargoAgent'
 
 interface StageDef {
@@ -190,6 +202,14 @@ export function OperationsCenterPage() {
   // Modal de Detalhes da Etapa
   const [selectedStageKey, setSelectedStageKey] = useState<keyof TripWorkflowStages | null>(null)
 
+  // Modais DACTE e DAMDFE (Passo 5)
+  const [isDacteModalOpen, setIsDacteModalOpen] = useState(false)
+  const [currentCte, setCurrentCte] = useState<CteDocument | null>(null)
+  const [isDamdfeModalOpen, setIsDamdfeModalOpen] = useState(false)
+  const [currentMdfe, setCurrentMdfe] = useState<MdfeDocument | null>(null)
+  const [isPreparingFiscal, setIsPreparingFiscal] = useState(false)
+  const [isTransmittingFiscal, setIsTransmittingFiscal] = useState(false)
+
   // Estados específicos do Piso Mínimo ANTT
   const [isCalculatingFloor, setIsCalculatingFloor] = useState(false)
   const [isRegularizingFloor, setIsRegularizingFloor] = useState(false)
@@ -273,7 +293,7 @@ export function OperationsCenterPage() {
     })
   }, [])
 
-  // Buscar contrato vinculado quando selectedOrder mudar
+  // Buscar contrato, CT-e e MDF-e vinculados quando selectedOrder mudar
   useEffect(() => {
     if (selectedOrder) {
       getContractByTripId(selectedOrder.id).then((c) => {
@@ -289,8 +309,20 @@ export function OperationsCenterPage() {
           })
         }
       })
+      // Carregar CT-e da viagem
+      getCteDocuments().then((ctes) => {
+        const found = ctes.find((ct) => ct.trip_id === selectedOrder.id)
+        setCurrentCte(found || null)
+      })
+      // Carregar MDF-e da viagem
+      getMdfeDocuments().then((mdfes) => {
+        const found = mdfes.find((m) => m.trip_id === selectedOrder.id)
+        setCurrentMdfe(found || null)
+      })
     } else {
       setCurrentContract(null)
+      setCurrentCte(null)
+      setCurrentMdfe(null)
     }
   }, [selectedOrder])
 
@@ -348,6 +380,148 @@ export function OperationsCenterPage() {
       })
     } finally {
       setIsGeneratingContract(false)
+    }
+  }
+
+  // Preparar CT-e a partir da Ordem de Transporte (Passo 5)
+  const handlePrepareCte = async () => {
+    if (!selectedOrder) return
+    setIsPreparingFiscal(true)
+    try {
+      const res = await prepareCteFromTrip(selectedOrder.id)
+      if (res.success) {
+        toast({
+          title: 'CT-e Preparado com Sucesso!',
+          description: res.message,
+        })
+        const ctes = await getCteDocuments()
+        const found = ctes.find((ct) => ct.trip_id === selectedOrder.id)
+        setCurrentCte(found || null)
+        await loadData()
+      } else {
+        toast({
+          title: 'Bloqueio na Preparação do CT-e',
+          description: res.error || res.message,
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao preparar CT-e',
+        description: err instanceof Error ? err.message : 'Falha na comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsPreparingFiscal(false)
+    }
+  }
+
+  // Transmitir CT-e para o Provedor Fiscal Real
+  const handleTransmitCteAction = async () => {
+    if (!currentCte) return
+    setIsTransmittingFiscal(true)
+    try {
+      const res = await transmitCte(currentCte.id)
+      if (res.status === 'authorized') {
+        toast({
+          title: `CT-e ${currentCte.cte_number} Autorizado!`,
+          description: res.message,
+        })
+      } else if (res.status === 'rejected') {
+        toast({
+          title: `CT-e ${currentCte.cte_number} Rejeitado pela SEFAZ`,
+          description: res.message,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'CT-e na Fila de Transmissão',
+          description: res.message,
+        })
+      }
+      const ctes = await getCteDocuments()
+      const found = ctes.find((ct) => ct.trip_id === selectedOrder?.id)
+      setCurrentCte(found || null)
+      await loadData()
+    } catch (err: unknown) {
+      toast({
+        title: 'Falha na transmissão do CT-e',
+        description: err instanceof Error ? err.message : 'Falha de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTransmittingFiscal(false)
+    }
+  }
+
+  // Preparar MDF-e a partir da Ordem de Transporte (Passo 5 - com IDVPO no grupo VPO)
+  const handlePrepareMdfe = async () => {
+    if (!selectedOrder) return
+    setIsPreparingFiscal(true)
+    try {
+      const res = await prepareMdfeFromTrip(selectedOrder.id)
+      if (res.success) {
+        toast({
+          title: 'MDF-e Preparado com Sucesso!',
+          description: res.message,
+        })
+        const mdfes = await getMdfeDocuments()
+        const found = mdfes.find((m) => m.trip_id === selectedOrder.id)
+        setCurrentMdfe(found || null)
+        await loadData()
+      } else {
+        toast({
+          title: 'Bloqueio na Preparação do MDF-e',
+          description: res.error || res.message,
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao preparar MDF-e',
+        description: err instanceof Error ? err.message : 'Falha na comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsPreparingFiscal(false)
+    }
+  }
+
+  // Transmitir MDF-e para o Provedor Fiscal Real
+  const handleTransmitMdfeAction = async () => {
+    if (!currentMdfe) return
+    setIsTransmittingFiscal(true)
+    try {
+      const res = await transmitMdfe(currentMdfe.id)
+      if (res.status === 'authorized') {
+        toast({
+          title: `MDF-e ${currentMdfe.mdfe_number} Autorizado!`,
+          description: res.message,
+        })
+      } else if (res.status === 'rejected') {
+        toast({
+          title: `MDF-e ${currentMdfe.mdfe_number} Rejeitado pela SEFAZ`,
+          description: res.message,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'MDF-e na Fila de Transmissão',
+          description: res.message,
+        })
+      }
+      const mdfes = await getMdfeDocuments()
+      const found = mdfes.find((m) => m.trip_id === selectedOrder?.id)
+      setCurrentMdfe(found || null)
+      await loadData()
+    } catch (err: unknown) {
+      toast({
+        title: 'Falha na transmissão do MDF-e',
+        description: err instanceof Error ? err.message : 'Falha de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTransmittingFiscal(false)
     }
   }
 
@@ -1406,6 +1580,264 @@ export function OperationsCenterPage() {
                   </div>
                 )}
 
+                {selectedStageKey === 'cte' && (
+                  <div className="p-3 bg-indigo-950/30 border border-indigo-800/50 rounded-lg space-y-3 mb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-300 block text-xs flex items-center gap-1.5">
+                        <FileText className="h-4 w-4" />
+                        Conhecimento de Transporte Eletrônico (CT-e Modelo 57)
+                      </span>
+                      {currentCte ? (
+                        <Badge
+                          className={`text-[10px] font-mono ${
+                            currentCte.status === 'authorized'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : currentCte.status === 'rejected'
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          }`}
+                        >
+                          CT-e nº {currentCte.cte_number} ({currentCte.status})
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-400 border-amber-500/30 text-[10px]"
+                        >
+                          Pendente de Preparação
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Bloqueio de piso mínimo */}
+                    {selectedOrder?.floor_applicable &&
+                      (selectedOrder?.floor_regularization_status === 'bloqueado_abaixo_piso' ||
+                        selectedOrder?.minimum_floor_status === 'abaixo_piso') && (
+                        <div className="p-2.5 bg-rose-950/50 border border-rose-800 rounded text-xs text-rose-300 flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block text-rose-200">
+                              Emissão de CT-e Bloqueada:
+                            </strong>
+                            O frete contratado está abaixo do piso mínimo oficial ANTT. Regularize o
+                            frete na etapa 5 antes de emitir o CT-e.
+                          </div>
+                        </div>
+                      )}
+
+                    {currentCte ? (
+                      <div className="space-y-2 bg-zinc-950/60 p-3 rounded border border-zinc-800 text-xs">
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                          <div>
+                            <span className="text-zinc-500">Número / Série:</span>{' '}
+                            <strong className="text-white">
+                              {currentCte.cte_number} / {currentCte.series}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Valor Total CT-e:</span>{' '}
+                            <strong className="text-emerald-400">
+                              R$ {Number(currentCte.total_cte_value || 0).toFixed(2)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">VPO Destacado:</span>{' '}
+                            <strong className="text-amber-400">
+                              R$ {Number(currentCte.vpo_value || 0).toFixed(2)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Protocolo SEFAZ:</span>{' '}
+                            <span className="font-mono text-zinc-200">
+                              {currentCte.protocol || 'Não transmitido'}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-zinc-500">Status SEFAZ:</span>{' '}
+                            <span className="text-zinc-300">{currentCte.status_message}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
+                          <Button
+                            size="sm"
+                            onClick={() => setIsDacteModalOpen(true)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Visualizar DACTE
+                          </Button>
+                          {currentCte.status !== 'authorized' && (
+                            <Button
+                              size="sm"
+                              onClick={handleTransmitCteAction}
+                              disabled={isTransmittingFiscal}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold gap-1.5"
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              {isTransmittingFiscal ? 'Transmitindo...' : 'Transmitir à SEFAZ'}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handlePrepareCte}
+                            disabled={isPreparingFiscal || currentCte.status === 'authorized'}
+                            className="text-zinc-400 hover:text-white text-xs gap-1"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${isPreparingFiscal ? 'animate-spin' : ''}`}
+                            />
+                            Atualizar Dados da OT
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-zinc-950/50 rounded border border-zinc-800 text-xs space-y-2">
+                        <p className="text-zinc-400 text-[11px]">
+                          Prepare o CT-e automaticamente com todos os dados da Ordem de Transporte:
+                          emitente, tomador, remetente, destinatário, frete, VPO incluso e
+                          informações fiscais.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={handlePrepareCte}
+                          disabled={
+                            isPreparingFiscal ||
+                            (selectedOrder?.floor_applicable &&
+                              (selectedOrder?.floor_regularization_status ===
+                                'bloqueado_abaixo_piso' ||
+                                selectedOrder?.minimum_floor_status === 'abaixo_piso'))
+                          }
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs gap-1.5"
+                        >
+                          <FileText
+                            className={`h-3.5 w-3.5 ${isPreparingFiscal ? 'animate-spin' : ''}`}
+                          />
+                          {isPreparingFiscal ? 'Preparando...' : 'Preparar CT-e da Ordem'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedStageKey === 'mdfe' && (
+                  <div className="p-3 bg-indigo-950/30 border border-indigo-800/50 rounded-lg space-y-3 mb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-300 block text-xs flex items-center gap-1.5">
+                        <Layers className="h-4 w-4" />
+                        Manifesto Eletrônico de Documentos Fiscais (MDF-e Modelo 58)
+                      </span>
+                      {currentMdfe ? (
+                        <Badge
+                          className={`text-[10px] font-mono ${
+                            currentMdfe.status === 'authorized'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : currentMdfe.status === 'rejected'
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          }`}
+                        >
+                          MDF-e nº {currentMdfe.mdfe_number} ({currentMdfe.status})
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-400 border-amber-500/30 text-[10px]"
+                        >
+                          Pendente de Preparação
+                        </Badge>
+                      )}
+                    </div>
+
+                    {currentMdfe ? (
+                      <div className="space-y-2 bg-zinc-950/60 p-3 rounded border border-zinc-800 text-xs">
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                          <div>
+                            <span className="text-zinc-500">Percurso de UFs:</span>{' '}
+                            <strong className="text-white">{currentMdfe.route_ufs}</strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">IDVPO no Vale-Pedágio:</span>{' '}
+                            <strong className="text-amber-300 font-mono">
+                              {currentMdfe.vpo_idvpo || 'Pendente'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">CIOT Vinculado:</span>{' '}
+                            <span className="font-mono text-zinc-200">
+                              {currentMdfe.ciot_number || 'Dispensado / Homologação'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Protocolo SEFAZ:</span>{' '}
+                            <span className="font-mono text-zinc-200">
+                              {currentMdfe.protocol || 'Não transmitido'}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-zinc-500">Status SEFAZ:</span>{' '}
+                            <span className="text-zinc-300">{currentMdfe.status_message}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
+                          <Button
+                            size="sm"
+                            onClick={() => setIsDamdfeModalOpen(true)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Visualizar DAMDFE
+                          </Button>
+                          {currentMdfe.status !== 'authorized' && (
+                            <Button
+                              size="sm"
+                              onClick={handleTransmitMdfeAction}
+                              disabled={isTransmittingFiscal}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold gap-1.5"
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              {isTransmittingFiscal ? 'Transmitindo...' : 'Transmitir à SEFAZ'}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handlePrepareMdfe}
+                            disabled={isPreparingFiscal || currentMdfe.status === 'authorized'}
+                            className="text-zinc-400 hover:text-white text-xs gap-1"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${isPreparingFiscal ? 'animate-spin' : ''}`}
+                            />
+                            Atualizar Manifesto
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-zinc-950/50 rounded border border-zinc-800 text-xs space-y-2">
+                        <p className="text-zinc-400 text-[11px]">
+                          Prepare o MDF-e com percurso da rota aprovada, CT-e vinculado, dados do
+                          CIOT, seguro e o grupo de Vale-Pedágio com o{' '}
+                          <strong>IDVPO no campo nCompra</strong> conforme layout da SEFAZ.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={handlePrepareMdfe}
+                          disabled={isPreparingFiscal}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs gap-1.5"
+                        >
+                          <Layers
+                            className={`h-3.5 w-3.5 ${isPreparingFiscal ? 'animate-spin' : ''}`}
+                          />
+                          {isPreparingFiscal ? 'Preparando...' : 'Preparar MDF-e com IDVPO'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {selectedStageKey === 'contrato' && (
                   <div className="p-3 bg-indigo-950/30 border border-indigo-800/50 rounded-lg space-y-3 mb-2">
                     <div className="flex items-center justify-between">
@@ -1896,6 +2328,32 @@ export function OperationsCenterPage() {
           const tmpls = await getContractTemplates()
           setTemplatesList(tmpls)
           setSelectedTemplateId(saved.id)
+        }}
+      />
+
+      {/* Modal 5: DACTE Oficial CT-e (Passo 5) */}
+      <DactePdfModal
+        cte={currentCte}
+        open={isDacteModalOpen}
+        onOpenChange={setIsDacteModalOpen}
+        onSendDocument={(doc) => {
+          toast({
+            title: 'DACTE enviado ao Agente de Despacho',
+            description: `Documento CT-e nº ${doc.cte_number} adicionado à esteira de envio.`,
+          })
+        }}
+      />
+
+      {/* Modal 6: DAMDFE Oficial MDF-e (Passo 5) */}
+      <DamdfePdfModal
+        mdfe={currentMdfe}
+        open={isDamdfeModalOpen}
+        onOpenChange={setIsDamdfeModalOpen}
+        onSendDocument={(doc) => {
+          toast({
+            title: 'DAMDFE enviado ao Agente de Despacho',
+            description: `Documento MDF-e nº ${doc.mdfe_number} adicionado à esteira de envio.`,
+          })
         }}
       />
     </div>

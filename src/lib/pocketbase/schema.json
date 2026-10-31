@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T03:10:09.753Z",
+  "generatedAt": "2026-10-31T03:26:15.018Z",
   "collections": [
     {
       "name": "users",
@@ -1136,6 +1136,85 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "cfop",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nat_op",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "linked_nfe_keys",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "shipper_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "shipper_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receiver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receiver_document",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "taker_type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["remetente", "expedidor", "recebedor", "destinatario", "outro"]
+        },
+        {
+          "name": "additional_info",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "icms_cst",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payload_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transmission_attempts",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "provider_reference",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_cte_number ON cte_documents (cte_number, series)"]
@@ -1787,7 +1866,13 @@
             "contract_update",
             "contract_template_create",
             "contract_template_update",
-            "contract_signature_request"
+            "contract_signature_request",
+            "cte_prepare",
+            "cte_rejected",
+            "cte_authorized",
+            "mdfe_prepare",
+            "mdfe_rejected",
+            "mdfe_authorized"
           ]
         },
         {
@@ -2814,6 +2899,90 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "ciot_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_idvpo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_responsible_doc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_policy_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "insurance_averbacao_protocol",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate_2",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payload_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transmission_attempts",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "provider_reference",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

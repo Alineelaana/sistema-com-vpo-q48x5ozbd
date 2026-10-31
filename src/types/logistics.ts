@@ -310,6 +310,16 @@ export interface CteDocument {
   sender_document: string
   recipient_name: string
   recipient_document: string
+  shipper_name?: string
+  shipper_document?: string
+  receiver_name?: string
+  receiver_document?: string
+  taker_type?: 'remetente' | 'expedidor' | 'recebedor' | 'destinatario' | 'outro'
+  cfop?: string
+  nat_op?: string
+  linked_nfe_keys?: string
+  additional_info?: string
+  icms_cst?: string
   cargo_value?: number
   freight_value: number
   vpo_included?: boolean
@@ -319,6 +329,9 @@ export interface CteDocument {
   status_message?: string
   protocol?: string
   xml_content?: string
+  payload_json?: string | Record<string, unknown>
+  transmission_attempts?: number
+  provider_reference?: string
   issued_at?: string
   expand?: {
     trip_id?: Trip
@@ -346,6 +359,20 @@ export interface MdfeDocument {
   linked_cte_keys?: string
   total_cargo_value?: number
   total_weight_kg?: number
+  ciot_number?: string
+  vpo_idvpo?: string
+  vpo_responsible_doc?: string
+  vpo_value?: number
+  insurance_policy_number?: string
+  insurance_averbacao_protocol?: string
+  driver_cpf?: string
+  driver_name?: string
+  vehicle_plate?: string
+  trailer_plate?: string
+  trailer_plate_2?: string
+  payload_json?: string | Record<string, unknown>
+  transmission_attempts?: number
+  provider_reference?: string
   issued_at?: string
   closed_at?: string
   cancelled_at?: string
