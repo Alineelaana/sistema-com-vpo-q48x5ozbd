@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T03:54:08.642Z",
+  "generatedAt": "2026-10-31T15:28:23.707Z",
   "collections": [
     {
       "name": "users",
@@ -1951,7 +1951,12 @@
             "vpo_confirmed",
             "vpo_failed",
             "driver_package_dispatch",
-            "driver_package_retry"
+            "driver_package_retry",
+            "ctrb_create",
+            "ctrb_save",
+            "ctrb_delete",
+            "ctrb_attach_doc",
+            "ctrb_delete_doc"
           ]
         },
         {
@@ -4829,6 +4834,270 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "filial",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fleet_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "operation_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "service_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tax_regime",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "series",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ciot_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_operation",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quick_charge",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsible_collaborator",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "integrator_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "integrator_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "trailer_plate_3",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_owner_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_owner_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_owner_doc",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vehicle_category",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contractor_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_carrier_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "law_observations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "complementary_observations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observations_to_accredited",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_payment_method",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_account_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_agency",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_account",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_pix_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_payment_method",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_bank_account_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "departure_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "advance_due_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balance_due_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "no_tax_calc",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "service_prices_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contracted_services_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "operational_costs_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fueling_records_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "installments_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "item_dispatches_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ciot_rectification_json",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -4926,6 +5195,77 @@
         "CREATE INDEX idx_tag_plate ON vehicle_tags (vehicle_plate)",
         "CREATE INDEX idx_tag_status ON vehicle_tags (status)"
       ]
+    },
+    {
+      "name": "contract_attachments",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "contract_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "transport_contracts"
+        },
+        {
+          "name": "file_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "document_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "file_size",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uploaded_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_cntr_att_contract ON contract_attachments (contract_id)"]
     }
   ]
 }

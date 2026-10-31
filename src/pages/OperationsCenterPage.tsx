@@ -2057,6 +2057,18 @@ export function OperationsCenterPage() {
                         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
                           <Button
                             size="sm"
+                            onClick={() =>
+                              navigate(
+                                `/lancamento-ctrb?id=${currentContract.id}&trip_id=${selectedOrder?.id || ''}`,
+                              )
+                            }
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Abrir no Lançamento CTRB
+                          </Button>
+                          <Button
+                            size="sm"
                             onClick={() => setIsContractPdfModalOpen(true)}
                             className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1.5"
                           >
@@ -2164,9 +2176,20 @@ export function OperationsCenterPage() {
                           </div>
                         </div>
 
-                        <div className="pt-2">
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
                           <Button
                             size="sm"
+                            onClick={() =>
+                              navigate(`/lancamento-ctrb?trip_id=${selectedOrder?.id || ''}`)
+                            }
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Lançar no Lançamento CTRB (Completo)
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={handleGenerateContract}
                             disabled={
                               isGeneratingContract ||
@@ -2175,14 +2198,12 @@ export function OperationsCenterPage() {
                                   'bloqueado_abaixo_piso' ||
                                   selectedOrder?.minimum_floor_status === 'abaixo_piso'))
                             }
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs gap-1.5"
+                            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 font-semibold text-xs gap-1.5"
                           >
                             <FileCheck2
                               className={`h-3.5 w-3.5 ${isGeneratingContract ? 'animate-spin' : ''}`}
                             />
-                            {isGeneratingContract
-                              ? 'Gerando CTRB...'
-                              : 'Gerar Contrato de Transporte (CTRB)'}
+                            {isGeneratingContract ? 'Gerando CTRB...' : 'Gerar Automático da Ordem'}
                           </Button>
                         </div>
                       </div>

@@ -1,5 +1,102 @@
 import { ScreenLogicDoc } from '@/components/ScreenLogicModal'
 
+export const CTRB_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Lançamento CTRB — Contrato de Transporte Rodoviário de Bens',
+  screenBadge: 'Operação • Contrato CTRB',
+  lastUpdate: '2026-10-31',
+  version: '1.0.0',
+  objective:
+    'Interface oficial para Lançamento do CTRB (Contrato de Transporte Rodoviário de Bens) replicando a referência ServiceLogic (14 abas operacionais), vinculando os cadastros centrais da empresa (Ordem de Transporte, Contratante, Contratado, Motorista, Frota) com anti-duplicação, auditoria completa de ações (criar, salvar, excluir, anexar), cálculo de piso mínimo ANTT, conferência de pedágio e status honesto de integração (CIOT, Integrador PX Bank, Assinatura Eletrônica).',
+  realFeatures: [
+    'Barra de ferramentas idêntica ao ServiceLogic: Novo, Salvar, Salvar e Novo, Excluir, Mais... (Imprimir CTRB, Baixar PDF, Gerar via Ordem, Visualizar Auditoria), Executar e Fechar',
+    'Cabeçalho triplo com Filial, Tipo Frota (Contrato), Tipo Operação, Contratado, Contratante, Motorista com busca rápida nos cadastros reais, Regime Tributário, Tipo de Serviço, Monitoramento Contrato/CIOT',
+    'Segunda faixa com Nº CTRB, Série, CIOT vinculado, Operação Fiscal, Datas (Emissão, Saída, Término com hora), Carga Rápida, Vencimentos de Adiantamento e Saldo, Colaborador Responsável e flag Não Calcular Impostos',
+    'Terceira faixa com Integrador (ex. PX Bank) e Status do Integrador com transparência honesta (Aguardando configuração de credenciais)',
+    '14 abas completas: Preço dos Serviços, Veículos, Observações (Lei 13.103/2015 e contador de 2000 caracteres), Serviços Contratados, CT-e vinculados, NFS, Inf. Bancárias (Contratado e painel do Motorista com limites de caracteres), Documentos (upload e download de anexos reais), Lançamento Abastecimento, Custos Operacionais, Conferência Pedágio (praças e tarifas ANTT reais), Saída Item, Parcelas e Retificação CIOT/ANTT',
+    'Preenchimento automático inteligente a partir da Ordem de Transporte selecionada (Passo 4 da esteira TMS), sem redigitação de contratante, contratado, rota, veículos, frete e condições',
+    'Salvaguarda anti-duplicação estrita: contratos vinculados à mesma viagem são atualizados e auditados, nunca duplicados',
+    'Status honesto absoluto: CIOT, Retificação CIOT/ANTT e Provedor de Assinatura mantêm status real "Aguardando configuração" quando não houver credenciais ativas — sem simular autorização fictícia',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Toolbar de Ações (Novo, Salvar, Excluir)',
+      type: 'Botões da Faixa Superior',
+      purpose:
+        'Persistência no banco SQLite com auditoria imediata de ações na coleção audit_logs.',
+    },
+    {
+      name: 'Executar e Fechar',
+      type: 'Comandos de Fluxo',
+      purpose: 'Valida preenchimento dos campos obrigatórios e retorna para a esteira operacional.',
+    },
+    {
+      name: 'Busca de Contratado / Contratante / Motorista / Veículos',
+      type: 'Seletores com Busca Integrada',
+      purpose:
+        'Vincula entidades existentes no sistema (drivers, vehicles, company_settings, trips) sem duplicar cadastros.',
+    },
+    {
+      name: 'Aba Observações (Lei 13.103/2015)',
+      type: 'Área de Texto com Contador de Caracteres',
+      purpose:
+        'Exibe e permite editar os termos legais obrigatórios da jornada de trabalho do motorista (máx. 2000 caracteres) e observações complementares.',
+    },
+    {
+      name: 'Aba Inf. Bancárias',
+      type: 'Painel Financeiro Duplo',
+      purpose:
+        'Gerencia a liquidação do frete para o Contratado (meio de pagamento, agência/conta/PIX) e dados bancários específicos do condutor com observações ao credenciado.',
+    },
+    {
+      name: 'Aba Documentos',
+      type: 'Gerenciador de Arquivos',
+      purpose:
+        'Upload de anexos com armazenamento real em contract_attachments e download direto do PDF assinado ou comprovantes.',
+    },
+    {
+      name: 'Aba Conferência Pedágio',
+      type: 'Extrato de Tarifas ANTT',
+      purpose:
+        'Exibe praças de pedágio da rota e tarifas vigentes ANTT-2026.1 sem dados fictícios.',
+    },
+  ],
+  businessRules: [
+    'O Contrato CTRB é a entidade formal de transporte rodoviário de cargas entre o embarcador e o transportador contratado (Lei 11.442/2007).',
+    'Cada CTRB gerado a partir de uma Ordem de Transporte vincula-se ao trip_id respectivo, impedindo duplicidades.',
+    'Todas as alterações e exclusões de CTRB registram logs específicos (ctrb_create, ctrb_save, ctrb_delete, ctrb_attach_doc) em audit_logs.',
+    'Integrações com CIOT, Integrador de Pagamento e Assinatura Eletrônica exigem credenciais reais e são transparentes.',
+  ],
+  agentsAndAutomations: [
+    'Sincronizado com operations_orchestrator.pb.js e dispatch_agent.pb.js para envio automático do pacote ao motorista quando liberado.',
+  ],
+  validations: [
+    'Nº do CTRB, contratante, contratado e valor de frete são de preenchimento obrigatório para emissão.',
+    'Contador regressivo de caracteres limita a observação em 2000 caracteres conforme o padrão da referência.',
+  ],
+  integrations: [
+    'Coleções transport_contracts, contract_attachments, trips, vehicles, drivers, company_settings, audit_logs.',
+  ],
+  flowsAndDependencies: [
+    'Alimenta o despacho de documentos, a emissão do CTRB em PDF e o avanço da etapa Contrato na Central de Operações.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'Ordens de Transporte (trips), cadastros operacionais e entrada manual do operador.',
+    destination: 'Coleção transport_contracts e contract_attachments.',
+    persistence: 'PocketBase SQLite com integridade referencial.',
+  },
+  permissions: [
+    { role: 'Operador, Gestor e Admin', access: 'Criação, edição e exclusão de contratos CTRB.' },
+    {
+      role: 'Visualizador e Financeiro',
+      access: 'Consulta somente leitura dos termos contratuais.',
+    },
+  ],
+  notificationsAndErrors: [
+    'Alerta caso o frete acordado esteja pendente de regularização do piso mínimo ANTT.',
+    'Confirmação antes de excluir contratos com registro de auditoria.',
+  ],
+}
+
 export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   screenTitle: 'Central de Operações de Transporte (TMS)',
   screenBadge: 'Operações • Ordem de Transporte Central',

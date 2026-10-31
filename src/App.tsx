@@ -11,6 +11,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { VpoPage } from './pages/VpoPage'
 import { OperationsCenterPage } from './pages/OperationsCenterPage'
+import LancamentoCtrbPage from './pages/LancamentoCtrbPage'
 import { TripsPage } from './pages/TripsPage'
 import { CtePage } from './pages/CtePage'
 import { MdfePage } from './pages/MdfePage'
@@ -78,9 +79,10 @@ const App = () => (
                 <Route path="/vpo-calc" element={<VpoPage />} />
               </Route>
 
-              {/* Módulo Central de Operações de Transporte (TMS Passo 1) */}
+              {/* Módulo Central de Operações de Transporte (TMS Passo 1) & Lançamento CTRB */}
               <Route element={<ProtectedRoute requiredModule="trips" />}>
                 <Route path="/operations-center" element={<OperationsCenterPage />} />
+                <Route path="/lancamento-ctrb" element={<LancamentoCtrbPage />} />
               </Route>
 
               {/* Módulo Viagens / Ordens de Transporte */}
