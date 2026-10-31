@@ -46,6 +46,9 @@ import {
   createOperationFromNfe,
   getConnectorsStatus,
   getTransportOrders,
+  processCiotOperation,
+  processVpoOperation,
+  sendDriverPackage,
 } from '@/services/operationService'
 import { getReceivedFiscalDocuments } from '@/services/cargoAgentService'
 import { calculateMinimumFloor, regularizeMinimumFloor } from '@/services/minimumFloorService'
@@ -248,6 +251,16 @@ export function OperationsCenterPage() {
     beneficiary_doc: '',
   })
 
+  // Estados para CIOT, VPO e Envio ao Motorista (Passos 6 e 7)
+  const [isProcessingCiot, setIsProcessingCiot] = useState(false)
+  const [isProcessingVpo, setIsProcessingVpo] = useState(false)
+  const [isSendingDriverPackage, setIsSendingDriverPackage] = useState(false)
+  const [vpoActionType, setVpoActionType] = useState<'request' | 'confirm' | 'simulate_failure'>(
+    'request',
+  )
+  const [vpoTagInput, setVpoTagInput] = useState('')
+  const [vpoProviderInput, setVpoProviderInput] = useState('semparar')
+
   // Carregar Ordens e Conectores
   const loadData = async () => {
     setIsLoading(true)
@@ -326,6 +339,105 @@ export function OperationsCenterPage() {
       setCurrentMdfe(null)
     }
   }, [selectedOrder])
+
+  // Handler para Processar CIOT perante IPEF com status honesto (Passo 6)
+  const handleProcessCiot = async () => {
+    if (!selectedOrder) return
+    setIsProcessingCiot(true)
+    try {
+      const res = await processCiotOperation(selectedOrder.id)
+      if (res.success) {
+        toast({
+          title: 'CIOT Processado',
+          description: res.workflow_stage?.message || 'Status de integração verificado.',
+        })
+        await loadData()
+      } else {
+        toast({
+          title: 'Falha no CIOT',
+          description: res.error || 'Não foi possível processar o CIOT.',
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao processar CIOT',
+        description: err instanceof Error ? err.message : 'Falha de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsProcessingCiot(false)
+    }
+  }
+
+  // Handler para Processar VPO (solicitação/confirmação/falha honesta) (Passo 6)
+  const handleProcessVpo = async (
+    action: 'request' | 'confirm' | 'simulate_failure' = vpoActionType,
+  ) => {
+    if (!selectedOrder) return
+    setIsProcessingVpo(true)
+    try {
+      const res = await processVpoOperation(
+        selectedOrder.id,
+        action,
+        vpoTagInput || undefined,
+        vpoProviderInput || undefined,
+      )
+      if (res.success) {
+        toast({
+          title: res.already_confirmed ? 'VPO Já Confirmado (Anti-duplicidade)' : 'VPO Processado',
+          description: res.workflow_stage?.message || 'Status do Vale-Pedágio atualizado.',
+        })
+        await loadData()
+      } else {
+        toast({
+          title: 'Falha no Vale-Pedágio (VPO)',
+          description: res.error || 'Não foi possível processar a operação de VPO.',
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao processar VPO',
+        description: err instanceof Error ? err.message : 'Falha de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsProcessingVpo(false)
+    }
+  }
+
+  // Handler para Envio Automático do Pacote de Viagem ao Motorista (Passo 7)
+  const handleSendDriverPackage = async (forceRetry = false) => {
+    if (!selectedOrder) return
+    setIsSendingDriverPackage(true)
+    try {
+      const res = await sendDriverPackage(selectedOrder.id, forceRetry)
+      if (res.success) {
+        toast({
+          title: res.already_sent
+            ? 'Pacote Já Enviado (Anti-duplicidade)'
+            : 'Pacote de Viagem Despachado!',
+          description: res.message,
+        })
+      } else {
+        toast({
+          title: 'Atenção no Envio do Pacote',
+          description: res.error || res.message,
+          variant: 'destructive',
+        })
+      }
+      await loadData()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao despachar pacote ao motorista',
+        description: err instanceof Error ? err.message : 'Falha de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSendingDriverPackage(false)
+    }
+  }
 
   // Gerar contrato CTRB
   const handleGenerateContract = async () => {
@@ -2276,6 +2388,342 @@ export function OperationsCenterPage() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* PASSO 6: DETALHES DE CIOT */}
+                {selectedStageKey === 'ciot' && (
+                  <div className="mt-4 p-4 bg-zinc-950/70 border border-zinc-800 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-xs text-white uppercase flex items-center gap-1.5">
+                        <Lock className="h-4 w-4 text-cyan-400" />
+                        Cadastramento e Protocolo do CIOT (ANTT / IPEF)
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          getStageInfo('ciot').status === 'concluida'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : getStageInfo('ciot').status === 'aguardando_configuracao'
+                              ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        }
+                      >
+                        {getStageInfo('ciot').status === 'aguardando_configuracao'
+                          ? 'Aguardando configuração'
+                          : getStageInfo('ciot').status === 'concluida'
+                            ? 'Registrado Oficial'
+                            : 'Requer Atenção'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">Enquadramento ANTT:</span>
+                        <strong className="text-zinc-200">
+                          {selectedOrder?.carrier_profile === 'tac' ||
+                          selectedOrder?.carrier_profile === 'tac_equiparado'
+                            ? 'Obrigatório (TAC / Equiparado)'
+                            : 'Dispensado / Opcional (ETC Pura)'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">RNTRC Informado:</span>
+                        <strong className="text-zinc-200 font-mono">
+                          {selectedOrder?.carrier_rntrc || 'Não informado'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">
+                          Provedor Homologado:
+                        </span>
+                        <strong className="text-cyan-400">
+                          {getStageInfo('ciot').details?.institution_provider || 'IPEF ANTT'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded bg-zinc-900/90 border border-zinc-800 text-xs space-y-1">
+                      <span className="text-zinc-400 font-semibold block">
+                        Regra de Transparência Operacional:
+                      </span>
+                      <p className="text-zinc-300 text-[11px] leading-relaxed">
+                        O sistema jamais gera ou simula CIOT válido sem confirmação de IPEF
+                        credenciada. Caso não haja credencial ativa em Configurações &gt; Empresa, o
+                        status permanece honestamente como <strong>Aguardando configuração</strong>.
+                      </p>
+                      {getStageInfo('ciot').details?.ciot_number && (
+                        <div className="pt-1 text-emerald-400 font-mono text-xs">
+                          Protocolo Oficial: {getStageInfo('ciot').details?.ciot_number}
+                        </div>
+                      )}
+                      {getStageInfo('ciot').details?.failure_reason && (
+                        <div className="pt-1 text-rose-400 text-xs font-semibold">
+                          Motivo da falha: {getStageInfo('ciot').details?.failure_reason}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={handleProcessCiot}
+                        disabled={isProcessingCiot}
+                        className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold gap-1.5"
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 ${isProcessingCiot ? 'animate-spin' : ''}`}
+                        />
+                        {isProcessingCiot
+                          ? 'Processando perante IPEF...'
+                          : 'Transmitir / Validar CIOT'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedStageKey(null)
+                          navigate('/ciot')
+                        }}
+                        className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs"
+                      >
+                        Painel Completo de CIOT
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* PASSO 6: DETALHES DE VPO E TAG */}
+                {selectedStageKey === 'vpo' && (
+                  <div className="mt-4 p-4 bg-zinc-950/70 border border-zinc-800 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-xs text-white uppercase flex items-center gap-1.5">
+                        <CreditCard className="h-4 w-4 text-amber-400" />
+                        Vale-Pedágio Obrigatório (Lei nº 10.209/01) & TAG
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          selectedOrder?.vpo_status === 'confirmado'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : selectedOrder?.vpo_status === 'solicitado'
+                              ? 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                              : selectedOrder?.vpo_status === 'aguardando_configuracao'
+                                ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                        }
+                      >
+                        {selectedOrder?.vpo_status === 'confirmado'
+                          ? 'Confirmado / Crédito Ativo'
+                          : selectedOrder?.vpo_status === 'solicitado'
+                            ? 'Solicitado na Operadora'
+                            : selectedOrder?.vpo_status === 'aguardando_configuracao'
+                              ? 'Aguardando configuração'
+                              : 'Pendência de Regularização'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">Tarifa Total:</span>
+                        <strong className="text-amber-400 text-sm">
+                          R$ {Number(selectedOrder?.vpo_value || 0).toFixed(2)}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">
+                          Praças Roteirizadas:
+                        </span>
+                        <strong className="text-zinc-200">
+                          {selectedOrder?.toll_tollgate_count || 0} praças
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">TAG Vinculada:</span>
+                        <strong className="text-cyan-400 font-mono">
+                          {selectedOrder?.vpo_tag_number || 'Sem TAG associada'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">IDVPO / Voucher:</span>
+                        <strong className="text-emerald-400 font-mono text-[11px] truncate block">
+                          {selectedOrder?.vpo_voucher_number || 'Pendente'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Alertas de Regularização */}
+                    {selectedOrder?.vpo_failure_reason && (
+                      <div className="p-2.5 rounded bg-rose-950/30 border border-rose-800/60 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 text-rose-300 font-bold">
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+                          Pendência de regularização no VPO
+                        </div>
+                        <p className="text-zinc-300 text-[11px]">
+                          {selectedOrder.vpo_failure_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Controles Operacionais do VPO */}
+                    <div className="p-3 bg-zinc-900/60 rounded border border-zinc-800 space-y-2">
+                      <span className="text-xs font-semibold text-zinc-300 block">
+                        Ação de Disponibilização FVPO:
+                      </span>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={vpoTagInput}
+                          onChange={(e) => setVpoTagInput(e.target.value)}
+                          placeholder="Número da TAG (ex: TAG-SP-9821841)"
+                          className="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                        <select
+                          value={vpoProviderInput}
+                          onChange={(e) => setVpoProviderInput(e.target.value)}
+                          className="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-200"
+                        >
+                          <option value="semparar">Sem Parar</option>
+                          <option value="conectcar">ConectCar</option>
+                          <option value="veloe">Veloe</option>
+                          <option value="repom">Repom</option>
+                          <option value="movemais">MoveMais</option>
+                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            onClick={() => handleProcessVpo('request')}
+                            disabled={isProcessingVpo}
+                            className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex-1"
+                          >
+                            Solicitar Crédito
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleProcessVpo('confirm')}
+                            disabled={isProcessingVpo}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex-1"
+                          >
+                            Confirmar IDVPO
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-zinc-500">
+                        Anti-duplicidade ativa: reexecuções após confirmação preservam o mesmo IDVPO
+                        sem gerar créditos duplicados.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* PASSO 7: DETALHES DE ENVIO AO MOTORISTA (PACOTE DE VIAGEM) */}
+                {selectedStageKey === 'envio' && (
+                  <div className="mt-4 p-4 bg-zinc-950/70 border border-zinc-800 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-xs text-white uppercase flex items-center gap-1.5">
+                        <Send className="h-4 w-4 text-cyan-400" />
+                        Despacho Automático do Pacote de Viagem ao Motorista
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          getStageInfo('envio').status === 'concluida'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : getStageInfo('envio').status === 'erro'
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        }
+                      >
+                        {getStageInfo('envio').status === 'concluida'
+                          ? 'Enviado com Sucesso'
+                          : getStageInfo('envio').status === 'erro'
+                            ? 'Falha no Envio'
+                            : 'Pendente'}
+                      </Badge>
+                    </div>
+
+                    <div className="p-2.5 rounded bg-zinc-900 border border-zinc-800 text-xs space-y-1.5">
+                      <span className="text-zinc-400 font-semibold block">
+                        Conteúdo Obrigatório do Pacote de Viagem:
+                      </span>
+                      <ul className="list-disc pl-4 text-[11px] text-zinc-300 space-y-0.5">
+                        <li>
+                          <strong>DACTE (PDF):</strong> Conhecimento de Transporte modelo 57 oficial
+                        </li>
+                        <li>
+                          <strong>DAMDFE (PDF):</strong> Manifesto Eletrônico com grupo de
+                          Vale-Pedágio (nCompra)
+                        </li>
+                        <li>
+                          <strong>CTRB (PDF):</strong> Contrato de Frete Rodoviário assinado/emitido
+                        </li>
+                        <li>
+                          <strong>Orientações VPO:</strong> Comprovante do Vale-Pedágio e TAG de
+                          pedágio
+                        </li>
+                        <li>
+                          <strong>Resumo da Rota:</strong> Trajeto aprovado com praças versionadas
+                          ANTT
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">Canal E-mail:</span>
+                        <strong className="text-emerald-400">
+                          {selectedOrder?.driver_name || 'Motorista'} (Conector Gmail/Outlook)
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">Canal WhatsApp:</span>
+                        <strong className="text-zinc-400">
+                          Aguardando configuração (integração futura)
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">
+                          Salvaguarda Anti-duplicidade:
+                        </span>
+                        <strong className="text-cyan-400">Chave bundle_trip_email única</strong>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={() => handleSendDriverPackage(false)}
+                        disabled={isSendingDriverPackage}
+                        className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold gap-1.5"
+                      >
+                        <Send
+                          className={`h-3.5 w-3.5 ${isSendingDriverPackage ? 'animate-spin' : ''}`}
+                        />
+                        {isSendingDriverPackage
+                          ? 'Despachando Pacote...'
+                          : 'Disparar Pacote ao Motorista'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSendDriverPackage(true)}
+                        disabled={isSendingDriverPackage}
+                        className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs"
+                      >
+                        Forçar Retentativa
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedStageKey(null)
+                          navigate('/email-agent-training')
+                        }}
+                        className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs"
+                      >
+                        Modelos de Mensagem (Treinamento)
+                      </Button>
+                    </div>
                   </div>
                 )}
 

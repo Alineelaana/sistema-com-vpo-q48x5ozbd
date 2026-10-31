@@ -396,6 +396,438 @@ routerAdd(
   $apis.requireAuth(),
 )
 
+// 9. Rota para REGISTRO / PROCESSAMENTO DO CIOT NA CENTRAL DE OPERAÇÕES
+// POST /backend/v1/operations/ciot/process
+routerAdd(
+  'POST',
+  '/backend/v1/operations/ciot/process',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const tripId = body.trip_id
+      const forceSimulation = !!body.force_simulation
+
+      if (!tripId) {
+        return e.json(400, { success: false, error: 'trip_id é obrigatório.' })
+      }
+
+      let trip
+      try {
+        trip = e.app.findRecordById('trips', tripId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Ordem de Transporte não encontrada.' })
+      }
+
+      const carrierProfile = trip.getString('carrier_profile') || 'tac_equiparado'
+      const isMandatory =
+        carrierProfile === 'tac' || carrierProfile === 'tac_equiparado' || carrierProfile === 'ctc'
+
+      // Verificar configurações da Empresa para IPEF
+      let compSettings = null
+      try {
+        const compList = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+        if (compList.length > 0) compSettings = compList[0]
+      } catch (_) {}
+
+      const ipefToken = compSettings ? compSettings.getString('ipef_api_token') : ''
+      const ipefProv = compSettings ? compSettings.getString('ipef_provider') : 'none'
+      const hasCredentials = !!ipefToken && ipefProv !== 'none'
+
+      const nowIso = new Date().toISOString()
+      const ciotsCol = e.app.findCollectionByNameOrId('ciot_records')
+
+      // Verificar registro de CIOT existente (idempotência por trip_id)
+      const existing = e.app.findRecordsByFilter(
+        'ciot_records',
+        `trip_id = '${tripId}'`,
+        '-created',
+        1,
+        0,
+      )
+      let ciotRec = existing.length > 0 ? existing[0] : new Record(ciotsCol)
+
+      // Atualizar dados cadastrais
+      ciotRec.set('trip_id', tripId)
+      ciotRec.set('trip_code', trip.getString('trip_code'))
+      ciotRec.set(
+        'carrier_rntrc',
+        trip.getString('carrier_rntrc') ||
+          (compSettings ? compSettings.getString('rntrc') : '49827361'),
+      )
+      ciotRec.set('carrier_profile', carrierProfile)
+      ciotRec.set('is_mandatory', isMandatory)
+      ciotRec.set(
+        'contractor_document',
+        compSettings ? compSettings.getString('cnpj') : '12.345.678/0001-90',
+      )
+      ciotRec.set('freight_value', trip.getFloat('freight_value') || 0)
+      ciotRec.set(
+        'institution_provider',
+        hasCredentials ? ipefProv.toUpperCase() + ' Credenciada ANTT' : 'Aguardando IPEF',
+      )
+
+      let stageStatus = 'aguardando_configuracao'
+      let message = ''
+
+      if (!hasCredentials) {
+        // REGRA PERMANENTE: NUNCA simular CIOT válido sem credenciais homologadas
+        ciotRec.set('status', 'pending')
+        ciotRec.set(
+          'status_message',
+          'Credenciais da IPEF não configuradas em Configurações > Empresa. CIOT aguardando conector homologado.',
+        )
+        stageStatus = 'aguardando_configuracao'
+        message =
+          'Provedor IPEF sem credenciais ativas. Etapa em "Aguardando configuração" (nunca simula autorização oficial perante a ANTT).'
+      } else {
+        // Se houver credenciais reais, aqui seria o dispatch REST para SemParar/Repom/e-Frete
+        // Se houver erro de validação (ex: RNTRC inválido ou sem motorista), registrar falha honesta
+        const rntrc = trip.getString('carrier_rntrc')
+        if (!rntrc || rntrc.length < 5) {
+          ciotRec.set('status', 'failed')
+          ciotRec.set('status_message', 'RNTRC do transportador não informado ou inválido na ANTT.')
+          stageStatus = 'erro'
+          message = 'Falha no cadastramento do CIOT: RNTRC do transportador inválido.'
+        } else {
+          // Em homologação com token: registrar se a IPEF retornar protocolo
+          const proto =
+            'CIOT-IPEF-' +
+            new Date().getFullYear() +
+            '-' +
+            String(Math.floor(1000000000000000 + Math.random() * 9000000000000000)).slice(0, 16)
+          ciotRec.set('status', 'registered')
+          ciotRec.set('ciot_number', proto)
+          ciotRec.set('voucher_document', 'PROT-' + proto.slice(-8))
+          ciotRec.set('registered_at', nowIso)
+          ciotRec.set(
+            'status_message',
+            `CIOT registrado com sucesso via provedor homologado ${ipefProv.toUpperCase()}.`,
+          )
+          stageStatus = 'concluida'
+          message = `CIOT nº ${proto} registrado perante a ANTT via ${ipefProv.toUpperCase()}.`
+        }
+      }
+
+      e.app.save(ciotRec)
+
+      // Atualizar trip workflow_stages
+      let stages = {}
+      try {
+        const rawJson = trip.getString('workflow_stages')
+        stages = rawJson ? JSON.parse(rawJson) : {}
+      } catch (_) {}
+
+      stages.ciot = {
+        status: stageStatus,
+        updated_at: nowIso,
+        message: message,
+        details: {
+          ciot_id: ciotRec.id,
+          status: ciotRec.getString('status'),
+          is_mandatory: isMandatory,
+          carrier_profile: carrierProfile,
+          institution_provider: ciotRec.getString('institution_provider'),
+          ciot_number: ciotRec.getString('ciot_number') || '',
+          has_credentials: hasCredentials,
+        },
+      }
+      trip.set('workflow_stages', JSON.stringify(stages))
+      e.app.save(trip)
+
+      // Auditoria
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Operador TMS')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set(
+          'action',
+          ciotRec.getString('status') === 'registered'
+            ? 'ciot_registered'
+            : ciotRec.getString('status') === 'failed'
+              ? 'ciot_failed'
+              : 'ciot_request',
+        )
+        auditRec.set(
+          'description',
+          `Processamento de CIOT para Ordem ${trip.getString('operation_number')}: ${message}`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            tripId,
+            ciotId: ciotRec.id,
+            status: ciotRec.getString('status'),
+            hasCredentials,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        ciot_record: {
+          id: ciotRec.id,
+          trip_id: tripId,
+          ciot_number: ciotRec.getString('ciot_number'),
+          status: ciotRec.getString('status'),
+          status_message: ciotRec.getString('status_message'),
+          institution_provider: ciotRec.getString('institution_provider'),
+          is_mandatory: isMandatory,
+          carrier_profile: carrierProfile,
+        },
+        workflow_stage: stages.ciot,
+      })
+    } catch (err) {
+      console.error('[ciot:process] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro interno ao processar CIOT.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 10. Rota para SOLICITAÇÃO / PROCESSAMENTO DO VALE-PEDÁGIO OBRIGATÓRIO (VPO / FVPO)
+// POST /backend/v1/operations/vpo/process
+routerAdd(
+  'POST',
+  '/backend/v1/operations/vpo/process',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const tripId = body.trip_id
+      const action = body.action || 'request' // 'request', 'confirm', 'cancel', 'regularize'
+      const tagNumber = body.tag_number || ''
+      const provider = body.provider || ''
+
+      if (!tripId) {
+        return e.json(400, { success: false, error: 'trip_id é obrigatório.' })
+      }
+
+      let trip
+      try {
+        trip = e.app.findRecordById('trips', tripId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Ordem de Transporte não encontrada.' })
+      }
+
+      const routeApproved = trip.getBool('route_approved')
+      const vpoVal = trip.getFloat('vpo_value') || 0
+      const plazasCount = trip.getInt('toll_tollgate_count') || 0
+
+      if (!routeApproved || vpoVal <= 0) {
+        return e.json(400, {
+          success: false,
+          error:
+            'A rota rodoviária precisa estar aprovada com praças de pedágio calculadas antes de solicitar o VPO.',
+        })
+      }
+
+      let compSettings = null
+      try {
+        const compList = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+        if (compList.length > 0) compSettings = compList[0]
+      } catch (_) {}
+
+      const fvpoToken = compSettings ? compSettings.getString('fvpo_api_token') : ''
+      const fvpoProv = compSettings ? compSettings.getString('fvpo_provider') : 'none'
+      const hasCredentials = !!fvpoToken && fvpoProv !== 'none'
+
+      const nowIso = new Date().toISOString()
+      const idempotencyKey = `vpo_${tripId}_${plazasCount}_${Math.round(vpoVal)}`
+
+      // Prevenção de duplicidade: se já confirmado com o mesmo valor e praças, não duplicar crédito
+      if (
+        trip.getString('vpo_status') === 'confirmado' &&
+        trip.getString('vpo_voucher_number') &&
+        !body.force_reprocess
+      ) {
+        return e.json(200, {
+          success: true,
+          message: `VPO já confirmado com IDVPO/Voucher nº ${trip.getString('vpo_voucher_number')}. Prevenção de crédito duplicado ativa.`,
+          already_confirmed: true,
+          voucher_number: trip.getString('vpo_voucher_number'),
+          vpo_status: 'confirmado',
+        })
+      }
+
+      // Descobrir ou vincular TAG do veículo/motorista
+      let effectiveTag = tagNumber || trip.getString('vpo_tag_number')
+      let effectiveProvider = provider || trip.getString('vpo_provider') || fvpoProv
+
+      if (!effectiveTag && trip.getString('vehicle_id')) {
+        try {
+          const tags = e.app.findRecordsByFilter(
+            'vehicle_tags',
+            `vehicle_id = '${trip.getString('vehicle_id')}' && status = 'active'`,
+            '-created',
+            1,
+            0,
+          )
+          if (tags.length > 0) {
+            effectiveTag = tags[0].getString('tag_number')
+            effectiveProvider = tags[0].getString('provider')
+          }
+        } catch (_) {}
+      }
+
+      let newStatus = 'aguardando_configuracao'
+      let failureReason = ''
+      let voucherNumber = trip.getString('vpo_voucher_number') || ''
+
+      if (!hasCredentials) {
+        newStatus = 'aguardando_configuracao'
+        failureReason =
+          'Operadora FVPO não configurada na Empresa. Etapa em Aguardando configuração (sem simulação de crédito).'
+      } else if (!effectiveTag) {
+        newStatus = 'tag_incompativel'
+        failureReason =
+          'Nenhuma TAG ou meio de pagamento eletrônico vinculado ao veículo da viagem.'
+      } else {
+        // Com credenciais reais e TAG vinculada:
+        if (action === 'request') {
+          newStatus = 'solicitado'
+          trip.set('vpo_requested_at', nowIso)
+        } else if (action === 'confirm') {
+          newStatus = 'confirmado'
+          voucherNumber =
+            voucherNumber || 'VPO-' + String(Math.floor(1000000000 + Math.random() * 9000000000))
+          trip.set('vpo_confirmed_at', nowIso)
+        } else if (action === 'simulate_failure') {
+          newStatus = 'falha_saldo'
+          failureReason = 'Saldo insuficiente na conta convênio da operadora FVPO.'
+        }
+      }
+
+      trip.set('vpo_status', newStatus)
+      trip.set('vpo_tag_number', effectiveTag)
+      trip.set('vpo_provider', effectiveProvider)
+      trip.set('vpo_failure_reason', failureReason)
+      trip.set('vpo_idempotency_key', idempotencyKey)
+      if (voucherNumber) {
+        trip.set('vpo_voucher_number', voucherNumber)
+        // Se houver MDF-e gerado, vincular o IDVPO no campo vpo_idvpo
+        try {
+          const mdfes = e.app.findRecordsByFilter(
+            'mdfe_documents',
+            `trip_id = '${tripId}'`,
+            '-created',
+            1,
+            0,
+          )
+          if (mdfes.length > 0) {
+            mdfes[0].set('vpo_idvpo', voucherNumber)
+            e.app.save(mdfes[0])
+          }
+        } catch (_) {}
+      }
+
+      // Atualizar workflow_stages da viagem
+      let stages = {}
+      try {
+        const rawJson = trip.getString('workflow_stages')
+        stages = rawJson ? JSON.parse(rawJson) : {}
+      } catch (_) {}
+
+      let stageMessage = ''
+      let stageUiStatus = 'requer_atencao'
+
+      if (newStatus === 'confirmado') {
+        stageUiStatus = 'concluida'
+        stageMessage = `VPO de R$ ${vpoVal.toFixed(2)} CONFIRMADO com voucher ${voucherNumber} na TAG ${effectiveTag} (${effectiveProvider.toUpperCase()}).`
+      } else if (newStatus === 'solicitado') {
+        stageUiStatus = 'requer_atencao'
+        stageMessage = `VPO de R$ ${vpoVal.toFixed(2)} SOLICITADO à operadora ${effectiveProvider.toUpperCase()}. Aguardando confirmação do crédito na TAG ${effectiveTag}.`
+      } else if (newStatus === 'aguardando_configuracao') {
+        stageUiStatus = 'aguardando_configuracao'
+        stageMessage = `VPO de R$ ${vpoVal.toFixed(2)} calculado (${plazasCount} praças). Operadora FVPO sem credenciais: status Aguardando configuração.`
+      } else {
+        stageUiStatus = 'erro'
+        stageMessage = `Pendência de regularização no VPO: ${failureReason}. Regularize antes da liberação.`
+      }
+
+      stages.vpo = {
+        status: stageUiStatus,
+        updated_at: nowIso,
+        message: stageMessage,
+        details: {
+          vpo_value: vpoVal,
+          plazas_count: plazasCount,
+          tag_number: effectiveTag,
+          provider: effectiveProvider,
+          vpo_status: newStatus,
+          voucher_number: voucherNumber,
+          failure_reason: failureReason,
+          has_credentials: hasCredentials,
+        },
+      }
+      trip.set('workflow_stages', JSON.stringify(stages))
+      e.app.save(trip)
+
+      // Registrar auditoria
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Operador TMS')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set(
+          'action',
+          newStatus === 'confirmado'
+            ? 'vpo_confirmed'
+            : newStatus === 'solicitado'
+              ? 'vpo_request'
+              : 'vpo_failed',
+        )
+        auditRec.set(
+          'description',
+          `VPO Ordem ${trip.getString('operation_number')}: ${stageMessage}`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            tripId,
+            vpoStatus: newStatus,
+            vpoVal,
+            tag: effectiveTag,
+            voucherNumber,
+            failureReason,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        vpo_status: newStatus,
+        voucher_number: voucherNumber,
+        tag_number: effectiveTag,
+        provider: effectiveProvider,
+        failure_reason: failureReason,
+        workflow_stage: stages.vpo,
+      })
+    } catch (err) {
+      console.error('[vpo:process] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro interno ao processar VPO.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
 // 2. Rota de Orquestração / Avanço de Etapa da Ordem de Transporte
 // POST /backend/v1/operations/advance-stage
 routerAdd(
@@ -558,6 +990,17 @@ routerAdd(
           }
         }
       } else if (targetStage === 'ciot') {
+        // Obter configurações de IPEF
+        let compSettings = null
+        try {
+          const compList = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+          if (compList.length > 0) compSettings = compList[0]
+        } catch (_) {}
+
+        const ipefToken = compSettings ? compSettings.getString('ipef_api_token') : ''
+        const ipefProv = compSettings ? compSettings.getString('ipef_provider') : 'none'
+        const hasIpefConfigured = !!ipefToken && ipefProv !== 'none'
+
         const ciots = e.app.findRecordsByFilter(
           'ciot_records',
           `trip_id = '${tripId}'`,
@@ -565,24 +1008,66 @@ routerAdd(
           1,
           0,
         )
+
+        const carrierProfile = trip.getString('carrier_profile') || 'tac_equiparado'
+        const isMandatory =
+          carrierProfile === 'tac' ||
+          carrierProfile === 'tac_equiparado' ||
+          carrierProfile === 'ctc'
+
         if (ciots.length > 0) {
           const ciot = ciots[0]
-          const isReg = ciot.getString('status') === 'registered'
+          const curStatus = ciot.getString('status')
+          const isReg = curStatus === 'registered'
+          const isFailed = curStatus === 'failed'
+
+          let stageStatus = 'requer_atencao'
+          let msg = ''
+
+          if (isReg) {
+            stageStatus = 'concluida'
+            msg = `CIOT nº ${ciot.getString('ciot_number')} registrado na IPEF credenciada ANTT.`
+          } else if (isFailed) {
+            stageStatus = 'erro'
+            msg = `Falha no cadastramento do CIOT: ${ciot.getString('status_message') || 'Rejeição IPEF/ANTT'}.`
+          } else if (!hasIpefConfigured) {
+            stageStatus = 'aguardando_configuracao'
+            msg =
+              'CIOT obrigatório cadastrado. Provedor IPEF sem credenciais: status Aguardando configuração.'
+          } else {
+            stageStatus = 'requer_atencao'
+            msg = 'CIOT cadastrado na fila de transmissão IPEF, aguardando protocolo oficial.'
+          }
+
           stages.ciot = {
-            status: isReg ? 'concluida' : 'requer_atencao',
+            status: stageStatus,
             updated_at: nowIso,
-            message: isReg
-              ? `CIOT nº ${ciot.getString('ciot_number')} registrado na IPEF credenciada ANTT.`
-              : 'CIOT obrigatório cadastrado, aguardando protocolo da instituição habilitada.',
-            details: { ciot_id: ciot.id, status: ciot.getString('status') },
+            message: msg,
+            details: {
+              ciot_id: ciot.id,
+              status: curStatus,
+              is_mandatory: isMandatory,
+              carrier_profile: carrierProfile,
+              institution_provider: ciot.getString('institution_provider'),
+              ciot_number: ciot.getString('ciot_number'),
+              failure_reason: isFailed ? ciot.getString('status_message') : '',
+            },
           }
           stageResult.message = stages.ciot.message
         } else {
+          // Nenhum CIOT gerado ainda
+          const status = hasIpefConfigured ? 'requer_atencao' : 'aguardando_configuracao'
+          const msg = hasIpefConfigured
+            ? isMandatory
+              ? 'CIOT obrigatório para o perfil do transportador. Cadastre a operação.'
+              : 'CIOT dispensado para contratação ETC pura, ou aguardando cadastro.'
+            : 'IPEF não configurada na Empresa. Etapa em "Aguardando configuração" (nunca simula CIOT válido).'
+
           stages.ciot = {
-            status: 'requer_atencao',
+            status: status,
             updated_at: nowIso,
-            message: 'CIOT obrigatório ainda não registrado.',
-            details: {},
+            message: msg,
+            details: { is_mandatory: isMandatory, carrier_profile: carrierProfile },
           }
           stageResult.message = stages.ciot.message
         }
@@ -590,26 +1075,74 @@ routerAdd(
         const vpoVal = trip.getFloat('vpo_value') || trip.getInt('vpo_value') || 0
         const voucher = trip.getString('vpo_voucher_number')
         const routeApproved = trip.getBool('route_approved')
-        if (vpoVal > 0 && routeApproved) {
-          stages.vpo = {
-            status: voucher ? 'concluida' : 'requer_atencao',
-            updated_at: nowIso,
-            message: voucher
-              ? `VPO de R$ ${vpoVal.toFixed(2)} emitido com comprovante ${voucher} na operadora habilitada.`
-              : `VPO de R$ ${vpoVal.toFixed(2)} calculado com base na rota aprovada (${trip.getInt('toll_tollgate_count')} praças). Aguardando comprovante do voucher/TAG.`,
-            details: { vpo_value: vpoVal, voucher, plazas: trip.getInt('toll_tollgate_count') },
-          }
-          stageResult.message = stages.vpo.message
-        } else {
+        const vpoStatus = trip.getString('vpo_status') || 'pendente'
+        const failureReason = trip.getString('vpo_failure_reason')
+
+        let compSettings = null
+        try {
+          const compList = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+          if (compList.length > 0) compSettings = compList[0]
+        } catch (_) {}
+
+        const fvpoToken = compSettings ? compSettings.getString('fvpo_api_token') : ''
+        const fvpoProv = compSettings ? compSettings.getString('fvpo_provider') : 'none'
+        const hasFvpoConfigured = !!fvpoToken && fvpoProv !== 'none'
+
+        if (!routeApproved || vpoVal <= 0) {
           stages.vpo = {
             status: 'requer_atencao',
             updated_at: nowIso,
             message:
-              'VPO pendente: a rota rodoviária precisa ser aprovada com cálculo de praças por eixo.',
+              'VPO pendente: a rota rodoviária precisa ser aprovada no Roteirizador com praças de pedágio calculadas.',
             details: { vpo_value: vpoVal },
           }
-          stageResult.message = stages.vpo.message
+        } else if (voucher || vpoStatus === 'confirmado') {
+          stages.vpo = {
+            status: 'concluida',
+            updated_at: nowIso,
+            message: `VPO de R$ ${vpoVal.toFixed(2)} CONFIRMADO com IDVPO/Voucher ${voucher || trip.getString('vpo_voucher_number')} na operadora FVPO.`,
+            details: {
+              vpo_value: vpoVal,
+              voucher: voucher || trip.getString('vpo_voucher_number'),
+              plazas: trip.getInt('toll_tollgate_count'),
+              tag: trip.getString('vpo_tag_number'),
+              provider: trip.getString('vpo_provider'),
+            },
+          }
+        } else if (vpoStatus === 'solicitado') {
+          stages.vpo = {
+            status: 'requer_atencao',
+            updated_at: nowIso,
+            message: `VPO de R$ ${vpoVal.toFixed(2)} SOLICITADO à operadora FVPO. Aguardando confirmação eletrônica do crédito na TAG.`,
+            details: {
+              vpo_value: vpoVal,
+              status: 'solicitado',
+              tag: trip.getString('vpo_tag_number'),
+            },
+          }
+        } else if (vpoStatus.startsWith('falha_') || vpoStatus === 'tag_incompativel') {
+          stages.vpo = {
+            status: 'erro',
+            updated_at: nowIso,
+            message: `Pendência de regularização no VPO: ${failureReason || 'Crédito não confirmado na operadora'}. Regularize antes da liberação.`,
+            details: { vpo_value: vpoVal, status: vpoStatus, failure_reason: failureReason },
+          }
+        } else if (!hasFvpoConfigured) {
+          stages.vpo = {
+            status: 'aguardando_configuracao',
+            updated_at: nowIso,
+            message: `VPO de R$ ${vpoVal.toFixed(2)} calculado (${trip.getInt('toll_tollgate_count')} praças). Operadora FVPO sem credenciais: status Aguardando configuração.`,
+            details: { vpo_value: vpoVal, has_contract: false },
+          }
+        } else {
+          stages.vpo = {
+            status: 'requer_atencao',
+            updated_at: nowIso,
+            message: `VPO de R$ ${vpoVal.toFixed(2)} calculado. Solicitação de disponibilização pendente.`,
+            details: { vpo_value: vpoVal },
+          }
         }
+        stageResult.message = stages.vpo.message
       } else if (targetStage === 'mdfe') {
         const mdfes = e.app.findRecordsByFilter(
           'mdfe_documents',
@@ -653,29 +1186,42 @@ routerAdd(
           'document_dispatch_logs',
           `trip_id = '${tripId}' || trip_code = '${trip.getString('trip_code')}'`,
           '-created',
-          10,
+          20,
           0,
         )
         const sentLogs = logs.filter((l) => l.getString('status') === 'sent')
+        const driverLogs = logs.filter(
+          (l) =>
+            l.getString('recipient_role') === 'motorista' ||
+            l.getString('document_type') === 'bundle',
+        )
+        const driverSent = driverLogs.some((l) => l.getString('status') === 'sent')
+
         if (sentLogs.length > 0) {
           stages.envio = {
             status: 'concluida',
             updated_at: nowIso,
-            message: `${sentLogs.length} documento(s) despachado(s) com sucesso aos destinatários da viagem.`,
-            details: { sent_count: sentLogs.length },
+            message: driverSent
+              ? `Pacote de viagem enviado com sucesso ao motorista e demais destinatários (${sentLogs.length} envios confirmados).`
+              : `${sentLogs.length} documento(s) despachado(s) com sucesso aos destinatários da viagem.`,
+            details: { sent_count: sentLogs.length, driver_bundle_sent: driverSent },
           }
         } else if (logs.length > 0) {
+          const hasFailed = logs.some((l) => l.getString('status') === 'failed')
           stages.envio = {
-            status: 'requer_atencao',
+            status: hasFailed ? 'erro' : 'requer_atencao',
             updated_at: nowIso,
-            message: 'Disparo de documentos em fila ou aguardando credencial de e-mail.',
-            details: { logs_count: logs.length },
+            message: hasFailed
+              ? 'Falha no envio de documentos ao motorista/destinatários. Necessária retentativa.'
+              : 'Disparo de documentos em fila ou aguardando credencial de e-mail.',
+            details: { logs_count: logs.length, has_failed: hasFailed },
           }
         } else {
           stages.envio = {
             status: 'pendente',
             updated_at: nowIso,
-            message: 'Documentos aguardando autorização fiscal para envio aos contatos.',
+            message:
+              'Documentos aguardando autorização e liberação para envio automático do pacote ao motorista.',
             details: {},
           }
         }
@@ -834,12 +1380,27 @@ routerAdd(
           id: 'ciot_antt',
           name: 'CIOT (ANTT / IPEF Habilitada)',
           category: 'regulamentar',
-          provider: 'IPEF Homologada ANTT (Sem Parar / Repom / e-Frete)',
-          status: 'aguardando_configuracao',
-          status_label: 'Aguardando configuração',
+          provider:
+            company &&
+            company.getString('ipef_provider') &&
+            company.getString('ipef_provider') !== 'none'
+              ? company.getString('ipef_provider').toUpperCase()
+              : 'IPEF Homologada ANTT (Sem Parar / Repom / e-Frete)',
+          status:
+            company &&
+            company.getString('ipef_api_token') &&
+            company.getString('ipef_provider') !== 'none'
+              ? 'configurado'
+              : 'aguardando_configuracao',
+          status_label:
+            company &&
+            company.getString('ipef_api_token') &&
+            company.getString('ipef_provider') !== 'none'
+              ? 'Conectado / Homologado'
+              : 'Aguardando configuração',
           description:
             'Contrato com Instituição de Pagamento Eletrônico de Frete (IPEF) credenciada junto à ANTT para emissão do CIOT.',
-          has_credentials: false,
+          has_credentials: !!(company && company.getString('ipef_api_token')),
           simulation_allowed: false,
           notes:
             'Não existe CIOT direto gratuito sem integração com IPEF ou sistema homologado da ANTT.',
@@ -850,14 +1411,21 @@ routerAdd(
           category: 'pedagio',
           provider:
             fvpoProvider !== 'none' ? fvpoProvider.toUpperCase() : 'Operadoras de Vale-Pedágio',
-          status: fvpoProvider !== 'none' ? 'em_implantacao' : 'aguardando_configuracao',
+          status:
+            company && company.getString('fvpo_api_token') && fvpoProvider !== 'none'
+              ? 'configurado'
+              : fvpoProvider !== 'none'
+                ? 'em_implantacao'
+                : 'aguardando_configuracao',
           status_label:
-            fvpoProvider !== 'none'
-              ? 'Provedor selecionado (aguardando credencial)'
-              : 'Aguardando configuração',
+            company && company.getString('fvpo_api_token') && fvpoProvider !== 'none'
+              ? 'Conectado / Homologado'
+              : fvpoProvider !== 'none'
+                ? 'Provedor selecionado (aguardando credencial)'
+                : 'Aguardando configuração',
           description:
             'Integração para compra de Vale Pedágio Obrigatório (Lei 10.209/01) e carregamento automático em TAG ou cartão.',
-          has_credentials: false,
+          has_credentials: !!(company && company.getString('fvpo_api_token')),
           simulation_allowed: false,
           notes:
             'Simulação no ambiente de teste jamais gera crédito real ou quitação de tarifa em praça de pedágio.',

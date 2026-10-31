@@ -291,6 +291,22 @@ export interface Trip {
   routing_provider?: string
   routing_distance_source?: 'manual_rodoviaria' | 'provedor_externo' | 'roteirizador_connect'
 
+  // VPO e Meio Eletrônico / TAG
+  vpo_status?:
+    | 'pendente'
+    | 'solicitado'
+    | 'confirmado'
+    | 'falha_saldo'
+    | 'falha_comunicacao'
+    | 'tag_incompativel'
+    | 'aguardando_configuracao'
+  vpo_tag_number?: string
+  vpo_provider?: string
+  vpo_requested_at?: string
+  vpo_confirmed_at?: string
+  vpo_failure_reason?: string
+  vpo_idempotency_key?: string
+
   expand?: {
     vehicle_id?: Vehicle
     driver_id?: Driver
@@ -386,6 +402,21 @@ export interface MdfeDocument {
 }
 
 export type CarrierProfile = 'etc' | 'tac_equiparado' | 'tac_independente' | 'ctc'
+
+export interface VehicleTag {
+  id: string
+  tag_number: string
+  provider: 'semparar' | 'repom' | 'conectcar' | 'veloe' | 'movemais' | 'outra'
+  vehicle_id?: string
+  driver_id?: string
+  vehicle_plate?: string
+  driver_name?: string
+  status: 'active' | 'blocked' | 'inactive'
+  balance_available?: number
+  notes?: string
+  created?: string
+  updated?: string
+}
 
 export interface CiotRecord {
   id: string

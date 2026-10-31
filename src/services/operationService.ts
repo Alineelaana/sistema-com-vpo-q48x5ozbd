@@ -26,6 +26,38 @@ export interface AdvanceStageResponse {
   error?: string
 }
 
+export interface ProcessCiotResponse {
+  success: boolean
+  ciot_record?: any
+  workflow_stage?: any
+  error?: string
+}
+
+export interface ProcessVpoResponse {
+  success: boolean
+  vpo_status?: string
+  voucher_number?: string
+  tag_number?: string
+  provider?: string
+  failure_reason?: string
+  workflow_stage?: any
+  already_confirmed?: boolean
+  error?: string
+}
+
+export interface DriverPackageResponse {
+  success: boolean
+  status?: string
+  message: string
+  driver_email?: string
+  driver_name?: string
+  log_id?: string
+  whatsapp_status?: string
+  whatsapp_note?: string
+  already_sent?: boolean
+  error?: string
+}
+
 export interface ConnectorsStatusResponse {
   success: boolean
   connectors: ConnectorContract[]
@@ -94,4 +126,42 @@ export async function getTransportOrders(
  */
 export async function updateTransportOrder(id: string, data: Partial<Trip>): Promise<Trip> {
   return await pb.collection('trips').update<Trip>(id, data)
+}
+
+/**
+ * Processa a etapa de CIOT perante IPEF / ANTT com status honesto e anti-duplicidade
+ */
+export async function processCiotOperation(tripId: string): Promise<ProcessCiotResponse> {
+  return await pb.send<ProcessCiotResponse>('/backend/v1/operations/ciot/process', {
+    method: 'POST',
+    body: { trip_id: tripId },
+  })
+}
+
+/**
+ * Processa a solicitação/confirmação do VPO com vinculação de TAG e idempotência
+ */
+export async function processVpoOperation(
+  tripId: string,
+  action: 'request' | 'confirm' | 'cancel' | 'simulate_failure' = 'request',
+  tagNumber?: string,
+  provider?: string,
+): Promise<ProcessVpoResponse> {
+  return await pb.send<ProcessVpoResponse>('/backend/v1/operations/vpo/process', {
+    method: 'POST',
+    body: { trip_id: tripId, action, tag_number: tagNumber, provider },
+  })
+}
+
+/**
+ * Dispara automaticamente o Pacote de Viagem ao motorista alocado com salvaguarda anti-duplicação
+ */
+export async function sendDriverPackage(
+  tripId: string,
+  forceRetry = false,
+): Promise<DriverPackageResponse> {
+  return await pb.send<DriverPackageResponse>('/backend/v1/agents/dispatch/driver-package', {
+    method: 'POST',
+    body: { trip_id: tripId, force_retry: forceRetry },
+  })
 }

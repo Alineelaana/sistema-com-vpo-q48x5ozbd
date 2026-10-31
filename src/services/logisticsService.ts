@@ -61,6 +61,32 @@ export async function deleteVehicle(id: string): Promise<boolean> {
   return true
 }
 
+// Vehicle Tags
+export async function getVehicleTags(): Promise<any[]> {
+  try {
+    return await pb.collection('vehicle_tags').getFullList({
+      sort: '-created',
+      expand: 'vehicle_id,driver_id',
+    })
+  } catch (err) {
+    console.warn('Erro ao carregar vehicle_tags:', err)
+    return []
+  }
+}
+
+export async function createVehicleTag(data: any): Promise<any> {
+  return await pb.collection('vehicle_tags').create(data)
+}
+
+export async function updateVehicleTag(id: string, data: any): Promise<any> {
+  return await pb.collection('vehicle_tags').update(id, data)
+}
+
+export async function deleteVehicleTag(id: string): Promise<boolean> {
+  await pb.collection('vehicle_tags').delete(id)
+  return true
+}
+
 // Motoristas
 export async function getDrivers(): Promise<Driver[]> {
   return await pb.collection('drivers').getFullList<Driver>({

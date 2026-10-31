@@ -844,3 +844,399 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+// 4. Rota para Envio Automático do Pacote de Viagem ao Motorista
+// POST /backend/v1/agents/dispatch/driver-package
+routerAdd(
+  'POST',
+  '/backend/v1/agents/dispatch/driver-package',
+  (e) => {
+    // Helper local para interpolação
+    const renderTmpl = (text, data) => {
+      if (!text) return ''
+      let res = text
+      const keys = Object.keys(data)
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]
+        const val = data[k] != null ? String(data[k]) : ''
+        const regex = new RegExp(`{{\\s*${k}\\s*}}`, 'g')
+        res = res.replace(regex, val)
+      }
+      return res
+    }
+
+    try {
+      const authUser = e.auth
+      const nowIso = new Date().toISOString()
+      const body = e.requestInfo().body || {}
+      const tripId = body.trip_id
+      const forceRetry = !!body.force_retry
+
+      if (!tripId) {
+        return e.json(400, { success: false, error: 'trip_id é obrigatório.' })
+      }
+
+      let trip
+      try {
+        trip = e.app.findRecordById('trips', tripId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Ordem de Transporte não encontrada.' })
+      }
+
+      // Validação de Liberação: verificar se a operação atende aos requisitos
+      const floorRegStatus = trip.getString('floor_regularization_status')
+      const floorApplicable = trip.getBool('floor_applicable')
+      const isFloorBlocked =
+        floorApplicable &&
+        (floorRegStatus === 'bloqueado_abaixo_piso' ||
+          trip.getString('minimum_floor_status') === 'abaixo_piso')
+      if (isFloorBlocked) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Operação bloqueada pelo Piso Mínimo ANTT. O pacote de viagem não pode ser enviado.',
+        })
+      }
+
+      // VPO: se houver falha bloqueante de VPO
+      const vpoStatus = trip.getString('vpo_status')
+      if (vpoStatus && (vpoStatus.startsWith('falha_') || vpoStatus === 'tag_incompativel')) {
+        return e.json(400, {
+          success: false,
+          error: `Pendência bloqueante no VPO (${trip.getString('vpo_failure_reason')}). Regularize o Vale-Pedágio antes de enviar o pacote ao motorista.`,
+        })
+      }
+
+      // Carregar Motorista da viagem
+      let driver = null
+      const driverId = trip.getString('driver_id')
+      if (driverId) {
+        try {
+          driver = e.app.findRecordById('drivers', driverId)
+        } catch (_) {}
+      }
+
+      const driverEmail = driver ? driver.getString('email') : ''
+      const driverName = driver
+        ? driver.getString('name')
+        : trip.getString('contracted_carrier_name') || 'Motorista'
+      const driverPhone = driver ? driver.getString('phone') : ''
+
+      if (!driverEmail) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Motorista alocado na viagem não possui e-mail cadastrado para recebimento do pacote.',
+        })
+      }
+
+      // Anti-duplicidade estrita
+      const dispatchKey = `bundle_${tripId}_${driverEmail.toLowerCase().trim()}`
+      let existingLog = null
+      try {
+        existingLog = e.app.findFirstRecordByFilter(
+          'document_dispatch_logs',
+          `dispatch_key = '${dispatchKey}'`,
+        )
+      } catch (_) {}
+
+      if (existingLog && existingLog.getString('status') === 'sent' && !forceRetry) {
+        return e.json(200, {
+          success: true,
+          message: `Pacote de viagem já foi enviado com sucesso para ${driverEmail}. Anti-duplicidade preservada.`,
+          already_sent: true,
+          sent_at: existingLog.getString('sent_at'),
+          log_id: existingLog.id,
+        })
+      }
+
+      // Documentos vinculados
+      // 1. CT-e
+      let cteNumber = 'Pendente'
+      let cteProtocol = 'Aguardando autorização'
+      try {
+        const ctes = e.app.findRecordsByFilter(
+          'cte_documents',
+          `trip_id = '${tripId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (ctes.length > 0) {
+          cteNumber = String(ctes[0].getInt('cte_number') || ctes[0].id)
+          cteProtocol = ctes[0].getString('protocol') || ctes[0].getString('status')
+        }
+      } catch (_) {}
+
+      // 2. MDF-e
+      let mdfeNumber = 'Pendente'
+      let mdfeProtocol = 'Aguardando autorização'
+      try {
+        const mdfes = e.app.findRecordsByFilter(
+          'mdfe_documents',
+          `trip_id = '${tripId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (mdfes.length > 0) {
+          mdfeNumber = String(mdfes[0].getInt('mdfe_number') || mdfes[0].id)
+          mdfeProtocol = mdfes[0].getString('protocol') || mdfes[0].getString('status')
+        }
+      } catch (_) {}
+
+      // 3. Contrato CTRB
+      const ctrbNumber = trip.getString('contract_number') || 'CTRB-EM-GERACAO'
+
+      // 4. CIOT
+      let ciotNumber = 'Aguardando configuração'
+      try {
+        const ciots = e.app.findRecordsByFilter(
+          'ciot_records',
+          `trip_id = '${tripId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (ciots.length > 0) {
+          ciotNumber =
+            ciots[0].getString('ciot_number') || ciots[0].getString('status_message') || 'Pendente'
+        }
+      } catch (_) {}
+
+      // 5. VPO
+      const vpoVal = trip.getFloat('vpo_value') || 0
+      const vpoVoucher =
+        trip.getString('vpo_voucher_number') ||
+        (vpoStatus === 'confirmado' ? 'Confirmado' : 'Aguardando liberação')
+      const tagNumber = trip.getString('vpo_tag_number') || 'TAG Frota'
+
+      // Modelo de mensagem
+      let templateRec = null
+      try {
+        const tmpls = e.app.findRecordsByFilter(
+          'document_dispatch_templates',
+          "document_type = 'bundle' && is_active = true",
+          '-created',
+          1,
+          0,
+        )
+        if (tmpls.length > 0) templateRec = tmpls[0]
+      } catch (_) {}
+
+      let companyName = 'TransConnect Transportes'
+      try {
+        const compRecs = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
+        if (compRecs.length > 0)
+          companyName = compRecs[0].getString('corporate_name') || companyName
+      } catch (_) {}
+
+      const variables = {
+        nome_cliente: driverName,
+        viagem: trip.getString('trip_code'),
+        empresa_emissora: companyName,
+        placa_veiculo: trip.getString('vehicle_plate') || 'Cavalo Mecânico',
+        origem_destino: `${trip.getString('origin_city')}/${trip.getString('origin_state')} ➔ ${trip.getString('destination_city')}/${trip.getString('destination_state')}`,
+        distancia_km: trip.getFloat('distance_km') || 0,
+        numero_cte: cteNumber,
+        protocolo_cte: cteProtocol,
+        numero_documento: mdfeNumber,
+        protocolo_autorizacao: mdfeProtocol,
+        numero_contrato: ctrbNumber,
+        numero_ciot: ciotNumber,
+        valor_vpo: vpoVal.toFixed(2),
+        comprovante_vpo: vpoVoucher,
+        tag_veiculo: tagNumber,
+      }
+
+      const defaultSubject = `{{empresa_emissora}} - Pacote de Viagem Liberado: Viagem {{viagem}}`
+      const defaultBody = `Olá {{nome_cliente}},\n\nSua viagem {{viagem}} foi liberada pela Central de Operações da {{empresa_emissora}}.\n\nDocumentos inclusos:\n• CT-e: nº {{numero_cte}} ({{protocolo_cte}})\n• MDF-e: nº {{numero_documento}} ({{protocolo_autorizacao}})\n• CTRB nº {{numero_contrato}}\n• CIOT ANTT: {{numero_ciot}}\n• Vale-Pedágio: R$ {{valor_vpo}} ({{comprovante_vpo}})\n• TAG: {{tag_veiculo}}\n\nBoa viagem e cumpra a rota aprovada!`
+
+      const subjectTemplate = templateRec
+        ? templateRec.getString('subject_template')
+        : defaultSubject
+      const bodyTemplate = templateRec ? templateRec.getString('body_template') : defaultBody
+
+      const finalSubject = renderTmpl(subjectTemplate, variables)
+      const finalBody = renderTmpl(bodyTemplate, variables)
+      const attachments = `5 itens anexos: DACTE_${cteNumber}.pdf, DAMDFE_${mdfeNumber}.pdf, CTRB_${ctrbNumber}.pdf, Orientacoes_VPO_${vpoVoucher}.pdf, Rota_Aprovada.pdf`
+
+      // Tentativa de envio real através do conector de e-mail do usuário
+      let sendSuccess = false
+      let providerUsed = 'system_email'
+      let errorMessage = ''
+
+      if (authUser) {
+        try {
+          const gmailRes = $connectors.execute(authUser, 'GMAIL_SEND_EMAIL', {
+            recipient_email: driverEmail,
+            subject: finalSubject,
+            body: finalBody,
+            is_html: false,
+          })
+          if (gmailRes && gmailRes.successful) {
+            sendSuccess = true
+            providerUsed = 'gmail'
+          } else if (gmailRes && gmailRes.error) {
+            errorMessage = String(gmailRes.error)
+          }
+        } catch (err) {
+          errorMessage = String(err)
+        }
+
+        if (!sendSuccess) {
+          try {
+            const outlookRes = $connectors.execute(authUser, 'OUTLOOK_SEND_EMAIL', {
+              to: driverEmail,
+              subject: finalSubject,
+              body: finalBody,
+              is_html: false,
+            })
+            if (outlookRes && outlookRes.successful) {
+              sendSuccess = true
+              providerUsed = 'outlook'
+              errorMessage = ''
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (!sendSuccess && !errorMessage) {
+        errorMessage =
+          'Nenhuma caixa de e-mail (Gmail ou Outlook) conectada para o usuário autenticado. O WhatsApp permanece em "Aguardando configuração".'
+      }
+
+      const dispatchLogsCol = e.app.findCollectionByNameOrId('document_dispatch_logs')
+      const logRec = existingLog || new Record(dispatchLogsCol)
+      const currentRetries = (existingLog ? existingLog.getInt('retry_count') : 0) + 1
+
+      logRec.set('dispatch_key', dispatchKey)
+      logRec.set('document_type', 'bundle')
+      logRec.set('document_id', tripId)
+      logRec.set('document_number', mdfeNumber)
+      logRec.set('document_auth_protocol', mdfeProtocol)
+      logRec.set('trip_id', tripId)
+      logRec.set('trip_code', trip.getString('trip_code'))
+      if (driver) logRec.set('recipient_id', driver.id)
+      logRec.set('recipient_name', driverName)
+      logRec.set('recipient_email', driverEmail)
+      logRec.set('recipient_role', 'motorista')
+      logRec.set(
+        'sender_account',
+        authUser ? authUser.getString('email') : 'operador@transconnect.local',
+      )
+      logRec.set('provider_used', providerUsed)
+      if (templateRec) {
+        logRec.set('template_id', templateRec.id)
+        logRec.set('template_name', templateRec.getString('name'))
+      }
+      logRec.set('email_subject', finalSubject)
+      logRec.set('email_body_preview', finalBody.slice(0, 500))
+      logRec.set('attachments_summary', attachments)
+      logRec.set('retry_count', currentRetries)
+      logRec.set('max_retries', 3)
+      logRec.set('dispatched_by', authUser ? authUser.getString('name') : 'Central de Agentes')
+
+      if (sendSuccess) {
+        logRec.set('status', 'sent')
+        logRec.set('sent_at', nowIso)
+        logRec.set('error_reason', '')
+        logRec.set('notification_sent', false)
+      } else {
+        logRec.set('status', currentRetries >= 3 ? 'failed' : 'retry_pending')
+        logRec.set('error_reason', errorMessage)
+        if (currentRetries >= 3) {
+          logRec.set('notification_sent', true)
+          // Notificar
+          try {
+            const notifCol = e.app.findCollectionByNameOrId('fine_notifications')
+            const notif = new Record(notifCol)
+            notif.set('type', 'due_soon')
+            notif.set('title', 'Agente de Envio: Falha no Pacote de Viagem ao Motorista')
+            notif.set(
+              'message',
+              `Falha ao enviar pacote da viagem ${trip.getString('trip_code')} para o motorista ${driverName} (${driverEmail}): ${errorMessage}`,
+            )
+            notif.set('days_diff', 0)
+            notif.set('is_read', false)
+            e.app.save(notif)
+          } catch (_) {}
+        }
+      }
+      e.app.save(logRec)
+
+      // Atualizar workflow_stages da viagem
+      let stages = {}
+      try {
+        const rawJson = trip.getString('workflow_stages')
+        stages = rawJson ? JSON.parse(rawJson) : {}
+      } catch (_) {}
+
+      stages.envio = {
+        status: sendSuccess
+          ? 'concluida'
+          : logRec.getString('status') === 'failed'
+            ? 'erro'
+            : 'requer_atencao',
+        updated_at: nowIso,
+        message: sendSuccess
+          ? `Pacote de viagem enviado com sucesso ao motorista ${driverName} (${driverEmail}) via ${providerUsed.toUpperCase()}.`
+          : `Envio do pacote de viagem ao motorista ${driverName} (${driverEmail}) com pendência: ${errorMessage}`,
+        details: {
+          log_id: logRec.id,
+          driver_name: driverName,
+          driver_email: driverEmail,
+          status: logRec.getString('status'),
+          provider_used: providerUsed,
+          whatsapp_status: 'aguardando_configuracao',
+          retry_count: currentRetries,
+        },
+      }
+      trip.set('workflow_stages', JSON.stringify(stages))
+      e.app.save(trip)
+
+      // Auditoria
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Central de Agentes')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'agente@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set('action', sendSuccess ? 'driver_package_dispatch' : 'driver_package_retry')
+        auditRec.set(
+          'description',
+          `Pacote de Viagem Ordem ${trip.getString('operation_number')}: ${stages.envio.message}`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({ tripId, driverEmail, sendSuccess, providerUsed, attachments }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: sendSuccess,
+        status: logRec.getString('status'),
+        message: stages.envio.message,
+        driver_email: driverEmail,
+        driver_name: driverName,
+        log_id: logRec.id,
+        whatsapp_status: 'aguardando_configuracao',
+        whatsapp_note:
+          'Integração oficial futura de WhatsApp (Z-API/Evolution) aguardando credenciais.',
+      })
+    } catch (err) {
+      console.error('[dispatch_agent:driver-package] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err
+          ? err.message || String(err)
+          : 'Erro interno ao despachar pacote de viagem ao motorista.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)

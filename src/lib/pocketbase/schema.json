@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T03:44:03.190Z",
+  "generatedAt": "2026-10-31T03:54:08.642Z",
   "collections": [
     {
       "name": "users",
@@ -291,6 +291,25 @@
         {
           "name": "insurance_blocking_enabled",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ipef_provider",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["semparar", "repom", "efrete", "ndd", "none"]
+        },
+        {
+          "name": "ipef_api_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fvpo_api_token",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -996,6 +1015,57 @@
         {
           "name": "floor_calculation_details",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "pendente",
+            "solicitado",
+            "confirmado",
+            "falha_saldo",
+            "falha_comunicacao",
+            "tag_incompativel",
+            "aguardando_configuracao"
+          ]
+        },
+        {
+          "name": "vpo_tag_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_requested_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_confirmed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_failure_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vpo_idempotency_key",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -1872,7 +1942,16 @@
             "cte_authorized",
             "mdfe_prepare",
             "mdfe_rejected",
-            "mdfe_authorized"
+            "mdfe_authorized",
+            "ciot_request",
+            "ciot_registered",
+            "ciot_failed",
+            "vpo_calculate",
+            "vpo_request",
+            "vpo_confirmed",
+            "vpo_failed",
+            "driver_package_dispatch",
+            "driver_package_retry"
           ]
         },
         {
@@ -4756,6 +4835,96 @@
         "CREATE UNIQUE INDEX idx_contracts_trip ON transport_contracts (trip_id)",
         "CREATE UNIQUE INDEX idx_contracts_num ON transport_contracts (contract_number)",
         "CREATE INDEX idx_contracts_status ON transport_contracts (status)"
+      ]
+    },
+    {
+      "name": "vehicle_tags",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "tag_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "provider",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["semparar", "repom", "conectcar", "veloe", "movemais", "outra"]
+        },
+        {
+          "name": "vehicle_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "vehicles"
+        },
+        {
+          "name": "driver_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "drivers"
+        },
+        {
+          "name": "vehicle_plate",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "driver_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["active", "blocked", "inactive"]
+        },
+        {
+          "name": "balance_available",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_tag_number ON vehicle_tags (tag_number)",
+        "CREATE INDEX idx_tag_plate ON vehicle_tags (vehicle_plate)",
+        "CREATE INDEX idx_tag_status ON vehicle_tags (status)"
       ]
     }
   ]
