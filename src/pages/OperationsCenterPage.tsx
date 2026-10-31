@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Compass,
+  Scale,
+  Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -45,6 +47,7 @@ import {
   getTransportOrders,
 } from '@/services/operationService'
 import { getReceivedFiscalDocuments } from '@/services/cargoAgentService'
+import { calculateMinimumFloor, regularizeMinimumFloor } from '@/services/minimumFloorService'
 import {
   ConnectorContract,
   Trip,
@@ -178,6 +181,15 @@ export function OperationsCenterPage() {
   // Modal de Detalhes da Etapa
   const [selectedStageKey, setSelectedStageKey] = useState<keyof TripWorkflowStages | null>(null)
 
+  // Estados específicos do Piso Mínimo ANTT
+  const [isCalculatingFloor, setIsCalculatingFloor] = useState(false)
+  const [isRegularizingFloor, setIsRegularizingFloor] = useState(false)
+  const [regularizeActionType, setRegularizeActionType] = useState<
+    'adjust_freight' | 'legal_justification'
+  >('adjust_freight')
+  const [adjustedFreightInput, setAdjustedFreightInput] = useState('')
+  const [legalJustificationInput, setLegalJustificationInput] = useState('')
+
   // Modal de Criar Ordem a partir de NF-e
   const [isNfeModalOpen, setIsNfeModalOpen] = useState(false)
   const [pendingNfes, setPendingNfes] = useState<ReceivedFiscalDocument[]>([])
@@ -262,6 +274,71 @@ export function OperationsCenterPage() {
       })
     } finally {
       setIsCreatingOrder(false)
+    }
+  }
+
+  // Calcular piso mínimo ANTT para a ordem selecionada
+  const handleCalculateFloor = async () => {
+    if (!selectedOrder) return
+    setIsCalculatingFloor(true)
+    try {
+      const res = await calculateMinimumFloor({
+        trip_id: selectedOrder.id,
+        distance_km: selectedOrder.distance_km,
+        freight_value: selectedOrder.freight_value,
+        carrier_profile: selectedOrder.carrier_profile,
+        axles: selectedOrder.axles_count,
+        table_type: (selectedOrder.floor_table_type as any) || 'tabela_a',
+        cargo_category: selectedOrder.floor_cargo_category || 'carga_geral',
+        empty_return_applicable: selectedOrder.floor_empty_return_applicable,
+      })
+
+      toast({
+        title: res.is_compliant ? 'Piso Mínimo em Conformidade' : 'Atenção: Frete Abaixo do Piso',
+        description: res.applicable
+          ? `Piso calculado: R$ ${res.minimum_floor_value.toFixed(2)} (Versão ${res.table_version}). Status: ${res.status_label}.`
+          : `Operação dispensada de piso mínimo: ${res.reason}`,
+        variant: res.is_compliant ? 'default' : 'destructive',
+      })
+      await loadData()
+    } catch (err: any) {
+      toast({
+        title: 'Falha ao calcular piso mínimo',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsCalculatingFloor(false)
+    }
+  }
+
+  // Regularizar piso mínimo
+  const handleRegularizeFloor = async () => {
+    if (!selectedOrder) return
+    setIsRegularizingFloor(true)
+    try {
+      const res = await regularizeMinimumFloor({
+        trip_id: selectedOrder.id,
+        action_type: regularizeActionType,
+        new_freight_value: Number(adjustedFreightInput) || undefined,
+        justification: legalJustificationInput,
+      })
+
+      toast({
+        title: 'Operação Regularizada!',
+        description: res.message,
+      })
+      setAdjustedFreightInput('')
+      setLegalJustificationInput('')
+      await loadData()
+    } catch (err: any) {
+      toast({
+        title: 'Falha na regularização',
+        description: err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRegularizingFloor(false)
     }
   }
 
@@ -587,16 +664,45 @@ export function OperationsCenterPage() {
                           </span>
                         </div>
                         <div className="bg-zinc-950/70 border border-zinc-800 px-3 py-1.5 rounded-lg text-right">
-                          <span className="text-[10px] text-zinc-400 block uppercase font-semibold">
-                            Piso Mínimo ANTT
-                          </span>
-                          <span className="text-sm font-bold text-cyan-400">
-                            R${' '}
-                            {Number(selectedOrder.minimum_floor_value || 0).toLocaleString(
-                              'pt-BR',
-                              { minimumFractionDigits: 2 },
+                          <span className="text-[10px] text-zinc-400 block uppercase font-semibold flex items-center justify-end gap-1">
+                            <span>Piso Mínimo ANTT</span>
+                            {selectedOrder.floor_table_version && (
+                              <span className="text-[9px] text-zinc-500 font-mono">
+                                ({selectedOrder.floor_table_version})
+                              </span>
                             )}
                           </span>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {selectedOrder.floor_regularization_status === 'nao_aplicavel' ? (
+                              <Badge variant="outline" className="text-[10px] text-zinc-400">
+                                Dispensado
+                              </Badge>
+                            ) : (
+                              <span className="text-sm font-bold text-cyan-400">
+                                R${' '}
+                                {Number(selectedOrder.minimum_floor_value || 0).toLocaleString(
+                                  'pt-BR',
+                                  { minimumFractionDigits: 2 },
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          {selectedOrder.floor_freight_difference !== undefined &&
+                            selectedOrder.floor_regularization_status !== 'nao_aplicavel' && (
+                              <span
+                                className={`text-[10px] font-mono block ${
+                                  (selectedOrder.floor_freight_difference || 0) >= 0
+                                    ? 'text-emerald-400'
+                                    : 'text-rose-400 font-bold'
+                                }`}
+                              >
+                                {(selectedOrder.floor_freight_difference || 0) >= 0 ? '+' : ''}
+                                R$ {Number(selectedOrder.floor_freight_difference || 0).toFixed(
+                                  2,
+                                )}{' '}
+                                vs Frete
+                              </span>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -1039,6 +1145,207 @@ export function OperationsCenterPage() {
                         Abrir Roteirizador Inteligente
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {selectedStageKey === 'piso_minimo' && (
+                  <div className="p-3 bg-cyan-950/30 border border-cyan-800/50 rounded-lg space-y-3 mb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-cyan-300 block text-xs flex items-center gap-1.5">
+                        <Scale className="h-4 w-4" />
+                        Motor do Piso Mínimo ANTT (Passo 3)
+                      </span>
+                      {selectedOrder?.floor_table_version && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-cyan-400 border-cyan-500/30 font-mono"
+                        >
+                          {selectedOrder.floor_table_version}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Resumo dos Valores Calculados */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2 bg-zinc-950/70 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">
+                          Piso Mínimo Calculado:
+                        </span>
+                        <strong className="text-cyan-400 text-sm">
+                          R${' '}
+                          {Number(selectedOrder?.minimum_floor_value || 0).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-950/70 rounded border border-zinc-800">
+                        <span className="text-[10px] text-zinc-500 block">Frete Negociado:</span>
+                        <strong className="text-zinc-200 text-sm">
+                          R${' '}
+                          {Number(selectedOrder?.freight_value || 0).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-zinc-950/70 rounded border border-zinc-800 col-span-2 md:col-span-1">
+                        <span className="text-[10px] text-zinc-500 block">Diferença / Status:</span>
+                        <strong
+                          className={`text-sm ${
+                            (selectedOrder?.floor_freight_difference || 0) >= 0
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          {(selectedOrder?.floor_freight_difference || 0) >= 0 ? '+' : ''}
+                          R$ {Number(selectedOrder?.floor_freight_difference || 0).toFixed(2)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Parâmetros do Cálculo */}
+                    <div className="text-[11px] text-zinc-400 bg-zinc-950/50 p-2.5 rounded border border-zinc-800 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Distância Rodoviária:</span>
+                        <strong className="text-zinc-200">
+                          {selectedOrder?.distance_km || 0} km (Rota Aprovada)
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Configuração:</span>
+                        <strong className="text-zinc-200">
+                          {selectedOrder?.axles_count || 6} eixos •{' '}
+                          {selectedOrder?.cargo_type || 'Carga Geral'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Retorno Vazio Regulamentar:</span>
+                        <strong className="text-zinc-200">
+                          {selectedOrder?.floor_empty_return_applicable ? 'Sim (Aplicado)' : 'Não'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Status Regularização:</span>
+                        <strong className="text-cyan-300 uppercase font-mono">
+                          {selectedOrder?.floor_regularization_status || 'Pendente'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Botões do Motor de Piso */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={handleCalculateFloor}
+                        disabled={isCalculatingFloor}
+                        className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold gap-1"
+                      >
+                        <RefreshCw
+                          className={`h-3 w-3 ${isCalculatingFloor ? 'animate-spin' : ''}`}
+                        />
+                        {isCalculatingFloor ? 'Calculando Piso...' : 'Recalcular Piso ANTT'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedStageKey(null)
+                          navigate('/minimum-floor-admin')
+                        }}
+                        className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs"
+                      >
+                        Gerenciar Tabelas ANTT
+                      </Button>
+                    </div>
+
+                    {/* Formulário de Regularização quando Bloqueado ou Abaixo do Piso */}
+                    {(selectedOrder?.floor_regularization_status === 'bloqueado_abaixo_piso' ||
+                      selectedOrder?.minimum_floor_status === 'abaixo_piso') && (
+                      <div className="mt-3 p-3 bg-rose-950/30 border border-rose-800/50 rounded-lg space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+                          <span className="font-bold text-rose-300 text-xs">
+                            Caminho de Regularização do Frete (Bloqueio Ativo)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          A viagem não pode ser liberada enquanto o frete estiver abaixo do piso
+                          mínimo oficial ANTT. Escolha uma das opções legais para regularizar:
+                        </p>
+
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="reg_action"
+                                value="adjust_freight"
+                                checked={regularizeActionType === 'adjust_freight'}
+                                onChange={() => setRegularizeActionType('adjust_freight')}
+                                className="text-cyan-600"
+                              />
+                              Ajustar Frete para cumprir o Piso
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="reg_action"
+                                value="legal_justification"
+                                checked={regularizeActionType === 'legal_justification'}
+                                onChange={() => setRegularizeActionType('legal_justification')}
+                                className="text-cyan-600"
+                              />
+                              Justificativa Legal Aprovada
+                            </label>
+                          </div>
+
+                          {regularizeActionType === 'adjust_freight' ? (
+                            <div className="flex items-center gap-2">
+                              <div className="relative flex-1">
+                                <span className="absolute left-2.5 top-2 text-zinc-500 text-xs">
+                                  R$
+                                </span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={adjustedFreightInput}
+                                  onChange={(e) => setAdjustedFreightInput(e.target.value)}
+                                  placeholder={`Mínimo: R$ ${Number(selectedOrder?.minimum_floor_value || 0).toFixed(2)}`}
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded pl-8 pr-3 py-1.5 text-xs text-white"
+                                />
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={handleRegularizeFloor}
+                                disabled={isRegularizingFloor || !adjustedFreightInput}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                              >
+                                {isRegularizingFloor ? 'Salvando...' : 'Atualizar Frete'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <textarea
+                                value={legalJustificationInput}
+                                onChange={(e) => setLegalJustificationInput(e.target.value)}
+                                placeholder="Descreva o enquadramento legal ou justificativa para a exceção regulatória (mínimo 10 caracteres)..."
+                                rows={2}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs text-white"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={handleRegularizeFloor}
+                                disabled={
+                                  isRegularizingFloor || legalJustificationInput.length < 10
+                                }
+                                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold"
+                              >
+                                {isRegularizingFloor ? 'Gravando...' : 'Aprovar Justificativa'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

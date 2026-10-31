@@ -443,10 +443,28 @@ export const TripsPage: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell className="font-semibold text-slate-800">
-                        {t.freight_value.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
+                        <div>
+                          {t.freight_value.toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </div>
+                        {t.floor_regularization_status === 'nao_aplicavel' ? (
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            Piso: Isento (Carga própria)
+                          </div>
+                        ) : t.minimum_floor_value ? (
+                          <div
+                            className={`text-[10px] font-mono ${
+                              (t.floor_freight_difference || 0) < 0
+                                ? 'text-rose-600 font-bold'
+                                : 'text-emerald-700'
+                            }`}
+                          >
+                            Piso: R$ {t.minimum_floor_value.toFixed(2)} (
+                            {t.floor_table_version || 'ANTT'})
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         <div className="font-bold text-indigo-600">

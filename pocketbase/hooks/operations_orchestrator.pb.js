@@ -613,14 +613,25 @@ routerAdd(
       } else if (targetStage === 'liberacao') {
         const hasVehicle = !!trip.getString('vehicle_id') || !!trip.getString('vehicle_plate')
         const hasDriver = !!trip.getString('driver_id')
-        const isFloorOk = trip.getString('minimum_floor_status') !== 'abaixo_piso'
+        const floorRegStatus = trip.getString('floor_regularization_status')
+        const floorApplicable = trip.getBool('floor_applicable')
+        // Operação liberada para piso mínimo se:
+        // 1. Operação não sujeita (floorApplicable === false ou floorRegStatus === 'nao_aplicavel')
+        // 2. Conforme (floorRegStatus === 'conforme')
+        // 3. Regularizada (floorRegStatus === 'regularizado_frete_ajustado' ou 'justificativa_aprovada')
+        // 4. Ou minimum_floor_status diferente de 'abaixo_piso'
+        const isFloorBlocked =
+          floorRegStatus === 'bloqueado_abaixo_piso' ||
+          trip.getString('minimum_floor_status') === 'abaixo_piso'
+        const isFloorOk = !floorApplicable || floorRegStatus === 'nao_aplicavel' || !isFloorBlocked
         const routeApproved = trip.getBool('route_approved')
 
         const blockers = []
         if (!hasVehicle) blockers.push('Veículo não selecionado')
         if (!hasDriver) blockers.push('Motorista não alocado')
         if (!routeApproved) blockers.push('Rota não aprovada no Roteirizador')
-        if (!isFloorOk) blockers.push('Frete abaixo do piso mínimo ANTT sem justificativa')
+        if (!isFloorOk)
+          blockers.push('Frete abaixo do piso mínimo ANTT sem justificativa ou regularização')
 
         if (blockers.length === 0) {
           stages.liberacao = {
@@ -1225,14 +1236,95 @@ routerAdd(
       trip.set('selected_plazas_details', JSON.stringify(plazasBreakdown))
       trip.set('routing_distance_source', 'manual_rodoviaria')
 
-      // Atualizar o Piso Mínimo e Frete Estimado da Operação
+      // Atualizar o Piso Mínimo da Operação a partir das tabelas versionadas vigentes
       const currentFreight = trip.getFloat('freight_value') || 0
-      // Estimativa ANTT para carga geral: R$ 6.80 por km com 6 eixos
-      const floorPerKm = axles >= 7 ? 8.2 : axles >= 5 ? 6.8 : 5.4
-      const calculatedFloor = Math.round(distanceKm * floorPerKm)
-      trip.set('minimum_floor_value', calculatedFloor)
-      const floorStatus = currentFreight >= calculatedFloor ? 'validado' : 'abaixo_piso'
-      trip.set('minimum_floor_status', floorStatus)
+      const isFloorApplicable =
+        trip.getBool('floor_applicable') !== false &&
+        trip.getString('carrier_profile') !== 'frota_propria'
+
+      let calculatedFloor = 0
+      let floorStatus = 'conforme'
+      let minFloorLegacyStatus = 'validado'
+      let usedFloorVersion = 'ANTT-RES-6059-2024'
+
+      if (!isFloorApplicable) {
+        trip.set('floor_applicable', false)
+        trip.set('floor_regularization_status', 'nao_aplicavel')
+        trip.set('minimum_floor_status', 'nao_aplicavel')
+        trip.set('minimum_floor_value', 0)
+        floorStatus = 'nao_aplicavel'
+        minFloorLegacyStatus = 'nao_aplicavel'
+      } else {
+        // Buscar tabela vigente
+        let floorTableRec = null
+        const currentFloorTables = e.app.findRecordsByFilter(
+          'piso_minimo_tabelas',
+          'is_current = true',
+          '-effective_from',
+          1,
+          0,
+        )
+        if (currentFloorTables.length > 0) floorTableRec = currentFloorTables[0]
+
+        if (floorTableRec) {
+          usedFloorVersion = floorTableRec.getString('version_code')
+          const tableType = trip.getString('floor_table_type') || 'tabela_a'
+          let cargoCat = trip.getString('floor_cargo_category') || 'carga_geral'
+
+          let coefs = e.app.findRecordsByFilter(
+            'piso_minimo_coeficientes',
+            `table_id = '${floorTableRec.id}' && table_type = '${tableType}' && cargo_category = '${cargoCat}' && axles = ${axles}`,
+            '',
+            1,
+            0,
+          )
+          if (coefs.length === 0) {
+            coefs = e.app.findRecordsByFilter(
+              'piso_minimo_coeficientes',
+              `table_id = '${floorTableRec.id}' && table_type = '${tableType}' && cargo_category = 'carga_geral' && axles = ${axles}`,
+              '',
+              1,
+              0,
+            )
+          }
+
+          if (coefs.length > 0) {
+            const ccd = coefs[0].getFloat('ccd_cost_per_km')
+            const cc = coefs[0].getFloat('cc_loading_unloading')
+            const emptyReturnApplicable = trip.getBool('floor_empty_return_applicable')
+            const emptyReturnValue = emptyReturnApplicable
+              ? Number((distanceKm * ccd).toFixed(2))
+              : 0
+            calculatedFloor = Number((distanceKm * ccd + cc + emptyReturnValue).toFixed(2))
+            const diff = Number((currentFreight - calculatedFloor).toFixed(2))
+
+            trip.set('floor_applicable', true)
+            trip.set('floor_table_version', usedFloorVersion)
+            trip.set('floor_table_id', floorTableRec.id)
+            trip.set('floor_ccd', ccd)
+            trip.set('floor_cc', cc)
+            trip.set('floor_distance_km', distanceKm)
+            trip.set('floor_empty_return_value', emptyReturnValue)
+            trip.set('floor_freight_difference', diff)
+            trip.set('minimum_floor_value', calculatedFloor)
+
+            if (currentFreight < calculatedFloor) {
+              const prevReg = trip.getString('floor_regularization_status')
+              floorStatus =
+                prevReg === 'justificativa_aprovada'
+                  ? 'justificativa_aprovada'
+                  : 'bloqueado_abaixo_piso'
+              minFloorLegacyStatus =
+                prevReg === 'justificativa_aprovada' ? 'regularizado' : 'abaixo_piso'
+            } else {
+              floorStatus = 'conforme'
+              minFloorLegacyStatus = 'validado'
+            }
+            trip.set('floor_regularization_status', floorStatus)
+            trip.set('minimum_floor_status', minFloorLegacyStatus)
+          }
+        }
+      }
 
       // Atualizar workflow_stages
       let stages = {}
@@ -1275,16 +1367,26 @@ routerAdd(
       }
 
       stages.piso_minimo = {
-        status: floorStatus === 'validado' ? 'concluida' : 'requer_atencao',
+        status:
+          floorStatus === 'conforme' ||
+          floorStatus === 'nao_aplicavel' ||
+          floorStatus === 'justificativa_aprovada'
+            ? 'concluida'
+            : 'requer_atencao',
         updated_at: nowIso,
         message:
-          floorStatus === 'validado'
-            ? `Frete de R$ ${currentFreight.toFixed(2)} cumpre o piso mínimo ANTT calculado para ${distanceKm} km (R$ ${calculatedFloor.toFixed(2)}).`
-            : `Frete atual (R$ ${currentFreight.toFixed(2)}) abaixo do piso mínimo ANTT calculado para ${distanceKm} km (R$ ${calculatedFloor.toFixed(2)}).`,
+          floorStatus === 'nao_aplicavel'
+            ? 'Operação dispensada da política de pisos mínimos ANTT (transporte frota própria / carga própria).'
+            : floorStatus === 'conforme'
+              ? `Frete de R$ ${currentFreight.toFixed(2)} cumpre o piso mínimo ANTT calculado para ${distanceKm} km na versão ${usedFloorVersion} (R$ ${calculatedFloor.toFixed(2)}).`
+              : floorStatus === 'justificativa_aprovada'
+                ? `Frete regularizado com justificativa aprovada: R$ ${currentFreight.toFixed(2)} (Piso ANTT ${usedFloorVersion}: R$ ${calculatedFloor.toFixed(2)}).`
+                : `Frete atual (R$ ${currentFreight.toFixed(2)}) abaixo do piso mínimo ANTT oficial calculado para ${distanceKm} km na versão ${usedFloorVersion} (R$ ${calculatedFloor.toFixed(2)}). Viagem bloqueada para regularização.`,
         details: {
           distance_km: distanceKm,
           freight_value: currentFreight,
           minimum_floor: calculatedFloor,
+          table_version: usedFloorVersion,
           status: floorStatus,
         },
       }

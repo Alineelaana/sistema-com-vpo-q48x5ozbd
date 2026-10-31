@@ -584,10 +584,15 @@ export const RoutingPage: React.FC = () => {
                       </strong>
                     </div>
                     <div className="border-l pl-3">
-                      <span className="text-slate-400 block text-[10px]">Piso ANTT Est.:</span>
+                      <span className="text-slate-400 block text-[10px]">Piso ANTT Oficial:</span>
                       <strong className="text-indigo-700 font-mono text-sm">
                         R$ {Number(currentOrder.minimum_floor_value || 0).toFixed(2)}
                       </strong>
+                      {currentOrder.floor_table_version && (
+                        <span className="text-[9px] text-indigo-500 font-mono block">
+                          {currentOrder.floor_table_version}
+                        </span>
+                      )}
                     </div>
                     <div className="border-l pl-3">
                       <span className="text-slate-400 block text-[10px]">Tarifa Usada:</span>

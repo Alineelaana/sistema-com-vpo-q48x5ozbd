@@ -1038,3 +1038,78 @@ export const PRIVACY_POLICY_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   permissions: [{ role: 'Todos os usuários', access: 'Leitura e registro de consentimento.' }],
   notificationsAndErrors: ['Confirmação imediata com toast.'],
 }
+
+export const MINIMUM_FLOOR_ADMIN_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
+  screenTitle: 'Administração do Piso Mínimo ANTT',
+  screenBadge: 'TMS Passo 3 • Regulação Lei 13.703/2018',
+  lastUpdate: '2026-10-31',
+  version: '1.0.0',
+  objective:
+    'Gerenciar as versões e coeficientes oficiais do Piso Mínimo do Frete (Lei nº 13.703/2018 e Resoluções ANTT nº 5.867/2020 e 6.059/2024), mantendo rastreabilidade total da fonte oficial, vigência e coeficientes de custo de deslocamento (CCD) e carga/descarga (CC) por categoria de carga e configuração de eixos.',
+  realFeatures: [
+    'Visualização da versão vigente de coeficientes e histórico completo de versões anteriores',
+    'Filtro de coeficientes por tipo de tabela (Lotação ou Apenas Veículo/Tração), categoria de carga e número de eixos',
+    'Importação/cadastro de nova versão de coeficientes com indicação clara da fonte oficial, ato legal e data de vigência',
+    'Ativação de versão como vigente com atualização imediata para novas Ordens de Transporte',
+    'Indicação transparente do status de validação oficial ("Oficial Validada" vs "Aguardando Validação Oficial")',
+    'Auditoria de todas as ações de importação e alteração de versão vigente',
+  ],
+  fieldsAndButtons: [
+    {
+      name: 'Importar / Nova Versão',
+      type: 'Botão de Ação (Modal)',
+      purpose: 'Abre formulário para importar ou registrar nova versão com coeficientes oficiais.',
+    },
+    {
+      name: 'Definir como Vigente',
+      type: 'Botão de Ação',
+      purpose: 'Altera a versão ativa utilizada pelo motor de cálculo do TMS.',
+    },
+    {
+      name: 'Acessar DOU / ANTTlegis',
+      type: 'Link Externo',
+      purpose: 'Abre o texto oficial da resolução da ANTT para conferência.',
+    },
+    {
+      name: 'Filtro por Categoria / Eixos',
+      type: 'Controle de Visualização',
+      purpose: 'Permite inspecionar os coeficientes CCD e CC por número de eixos e tipo de carga.',
+    },
+  ],
+  businessRules: [
+    'Somente administradores têm permissão para importar novas versões ou alterar a tabela vigente.',
+    'Nunca usar valores fixos no código: o motor consome exclusivamente os registros da versão vigente no banco.',
+    'Cada cálculo realizado em uma Ordem de Transporte grava permanentemente o código da versão utilizada.',
+    'Status honesto: tabelas não confirmadas no Diário Oficial devem ser marcadas como "Aguardando validação oficial".',
+  ],
+  agentsAndAutomations: [
+    'Motor de cálculo do backend (minimum_floor_engine.pb.js) consulta a tabela ativa em tempo real.',
+    'Registro automático de auditoria em audit_logs com IP e identificação do administrador.',
+  ],
+  validations: [
+    'Código de versão único no banco de dados.',
+    'Obrigatoriedade de ato legal e data de vigência para importação.',
+    'Validação dos valores numéricos de CCD e CC por eixo (devem ser maiores que zero).',
+  ],
+  integrations: [
+    'Coleções piso_minimo_tabelas e piso_minimo_coeficientes.',
+    'Rotas REST /backend/v1/minimum-floor/tables, /import e /set-current.',
+    'Central de Operações de Transporte e Roteirizador Connect.',
+  ],
+  flowsAndDependencies: [
+    'Quando uma rota é aprovada ou frete recalculado, o motor utiliza a tabela definida como vigente nesta tela.',
+    'Alterar a tabela vigente não altera retrospectivamente cálculos de viagens já aprovadas/liberadas.',
+  ],
+  dataSourceAndDestination: {
+    origin: 'Resoluções e Portarias da ANTT (DOU / ANTTlegis).',
+    destination: 'Coleções piso_minimo_tabelas, piso_minimo_coeficientes e audit_logs.',
+    persistence: 'Banco SQLite via PocketBase.',
+  },
+  permissions: [
+    { role: 'Administrador', access: 'Visualização, importação e alteração de versão vigente.' },
+  ],
+  notificationsAndErrors: [
+    'Toast de confirmação ao importar nova tabela ou alternar vigência.',
+    'Alerta visual quando a tabela estiver em status aguardando validação oficial.',
+  ],
+}

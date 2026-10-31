@@ -245,6 +245,28 @@ export interface Trip {
   contracted_carrier_doc?: string
   minimum_floor_value?: number
   minimum_floor_status?: MinimumFloorStatus
+  floor_table_version?: string
+  floor_table_id?: string
+  floor_applicable?: boolean
+  floor_non_applicable_reason?: string
+  floor_table_type?: string
+  floor_cargo_category?: string
+  floor_ccd?: number
+  floor_cc?: number
+  floor_distance_km?: number
+  floor_empty_return_applicable?: boolean
+  floor_empty_return_value?: number
+  floor_freight_difference?: number
+  floor_regularization_status?:
+    | 'conforme'
+    | 'bloqueado_abaixo_piso'
+    | 'regularizado_frete_ajustado'
+    | 'justificativa_aprovada'
+    | 'nao_aplicavel'
+  floor_regularization_reason?: string
+  floor_regularized_at?: string
+  floor_regularized_by?: string
+  floor_calculation_details?: string
   payment_terms?: string
   advance_payment_value?: number
   balance_payment_value?: number

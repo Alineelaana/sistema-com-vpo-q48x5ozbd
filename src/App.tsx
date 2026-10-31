@@ -22,6 +22,7 @@ import { CompanyPage } from './pages/CompanyPage'
 import { FinesPage } from './pages/FinesPage'
 import { DeliveriesPage } from './pages/DeliveriesPage'
 import { RoutingPage } from './pages/RoutingPage'
+import { MinimumFloorAdminPage } from './pages/MinimumFloorAdminPage'
 import { ControlTowerPage } from './pages/ControlTowerPage'
 import { FreightAuditPage } from './pages/FreightAuditPage'
 import { UsersPage } from './pages/UsersPage'
@@ -55,6 +56,11 @@ const App = () => (
               {/* Módulo de Roteirização */}
               <Route element={<ProtectedRoute requiredModule="routing" />}>
                 <Route path="/routing" element={<RoutingPage />} />
+              </Route>
+
+              {/* Módulo de Administração do Piso Mínimo ANTT */}
+              <Route element={<ProtectedRoute adminOnly />}>
+                <Route path="/minimum-floor-admin" element={<MinimumFloorAdminPage />} />
               </Route>
 
               {/* Módulo Torre de Controle */}

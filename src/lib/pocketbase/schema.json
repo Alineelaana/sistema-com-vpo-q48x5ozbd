@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T02:33:41.838Z",
+  "generatedAt": "2026-10-31T02:44:34.391Z",
   "collections": [
     {
       "name": "users",
@@ -888,6 +888,116 @@
           "required": false,
           "system": false,
           "selectValues": ["manual_rodoviaria", "provedor_externo", "roteirizador_connect"]
+        },
+        {
+          "name": "floor_table_version",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_table_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "piso_minimo_tabelas"
+        },
+        {
+          "name": "floor_applicable",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_non_applicable_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_table_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_cargo_category",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_ccd",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_cc",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_distance_km",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_empty_return_applicable",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_empty_return_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_freight_difference",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_regularization_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "conforme",
+            "bloqueado_abaixo_piso",
+            "regularizado_frete_ajustado",
+            "justificativa_aprovada",
+            "nao_aplicavel"
+          ]
+        },
+        {
+          "name": "floor_regularization_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_regularized_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_regularized_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "floor_calculation_details",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_trips_code ON trips (trip_code)"]
@@ -1668,7 +1778,11 @@
             "route_create",
             "route_update",
             "route_approve",
-            "route_calculate_tolls"
+            "route_calculate_tolls",
+            "floor_calculate",
+            "floor_regularize",
+            "floor_table_import",
+            "floor_table_set_current"
           ]
         },
         {
@@ -3702,6 +3816,199 @@
         "CREATE INDEX idx_toll_tariffs_plaza ON toll_tariffs (plaza_id)",
         "CREATE INDEX idx_toll_tariffs_version ON toll_tariffs (tariff_version)",
         "CREATE INDEX idx_toll_tariffs_axles ON toll_tariffs (axles)"
+      ]
+    },
+    {
+      "name": "piso_minimo_tabelas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "version_code",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "legal_act",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "source_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "effective_from",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "effective_to",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_current",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validation_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["oficial_validada", "aguardando_validacao_oficial", "revogada"]
+        },
+        {
+          "name": "diesel_reference_price",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ipca_accumulated_percent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "imported_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_piso_tabelas_version ON piso_minimo_tabelas (version_code)",
+        "CREATE INDEX idx_piso_tabelas_current ON piso_minimo_tabelas (is_current)"
+      ]
+    },
+    {
+      "name": "piso_minimo_coeficientes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "table_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "piso_minimo_tabelas"
+        },
+        {
+          "name": "table_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["tabela_a", "tabela_b", "tabela_c", "tabela_d"]
+        },
+        {
+          "name": "cargo_category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "granel_solido",
+            "granel_liquido",
+            "frigorificada",
+            "conteinerizada",
+            "carga_geral",
+            "neogranel",
+            "perigosa_granel_solido",
+            "perigosa_granel_liquido",
+            "perigosa_frigorificada",
+            "perigosa_conteinerizada",
+            "perigosa_carga_geral",
+            "granel_pressurizada"
+          ]
+        },
+        {
+          "name": "cargo_category_label",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "axles",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ccd_cost_per_km",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cc_loading_unloading",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_piso_coef_table ON piso_minimo_coeficientes (table_id)",
+        "CREATE INDEX idx_piso_coef_lookup ON piso_minimo_coeficientes (table_id, table_type, cargo_category, axles)"
       ]
     }
   ]
