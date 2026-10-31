@@ -2421,7 +2421,7 @@ export function OperationsCenterPage() {
                       <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
                         <span className="text-[10px] text-zinc-500 block">Enquadramento ANTT:</span>
                         <strong className="text-zinc-200">
-                          {selectedOrder?.carrier_profile === 'tac' ||
+                          {selectedOrder?.carrier_profile === 'tac_independente' ||
                           selectedOrder?.carrier_profile === 'tac_equiparado'
                             ? 'Obrigatório (TAC / Equiparado)'
                             : 'Dispensado / Opcional (ETC Pura)'}
@@ -2438,7 +2438,9 @@ export function OperationsCenterPage() {
                           Provedor Homologado:
                         </span>
                         <strong className="text-cyan-400">
-                          {getStageInfo('ciot').details?.institution_provider || 'IPEF ANTT'}
+                          {String(
+                            getStageInfo('ciot').details?.institution_provider || 'IPEF ANTT',
+                          )}
                         </strong>
                       </div>
                     </div>
@@ -2454,12 +2456,12 @@ export function OperationsCenterPage() {
                       </p>
                       {getStageInfo('ciot').details?.ciot_number && (
                         <div className="pt-1 text-emerald-400 font-mono text-xs">
-                          Protocolo Oficial: {getStageInfo('ciot').details?.ciot_number}
+                          Protocolo Oficial: {String(getStageInfo('ciot').details?.ciot_number)}
                         </div>
                       )}
                       {getStageInfo('ciot').details?.failure_reason && (
                         <div className="pt-1 text-rose-400 text-xs font-semibold">
-                          Motivo da falha: {getStageInfo('ciot').details?.failure_reason}
+                          Motivo da falha: {String(getStageInfo('ciot').details?.failure_reason)}
                         </div>
                       )}
                     </div>
@@ -2672,7 +2674,8 @@ export function OperationsCenterPage() {
                       <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
                         <span className="text-[10px] text-zinc-500 block">Canal E-mail:</span>
                         <strong className="text-emerald-400">
-                          {selectedOrder?.driver_name || 'Motorista'} (Conector Gmail/Outlook)
+                          {selectedOrder?.expand?.driver_id?.name || 'Motorista'} (Conector
+                          Gmail/Outlook)
                         </strong>
                       </div>
                       <div className="p-2 bg-zinc-900 rounded border border-zinc-800">

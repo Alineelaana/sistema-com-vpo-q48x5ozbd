@@ -80,6 +80,7 @@ export type WorkflowStageStatus =
   | 'concluida'
   | 'requer_atencao'
   | 'erro'
+  | 'aguardando_configuracao'
 
 export interface WorkflowStageInfo {
   status: WorkflowStageStatus

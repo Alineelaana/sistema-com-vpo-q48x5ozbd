@@ -92,6 +92,7 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'PRIORIDADE 4: Cadastro de Destinatários de Documentos por cliente/operação com papéis, e-mails (direto e CC) e tipos de documento autorizados (CT-e, MDF-e, CIOT, Seguro, VPO)',
     'PRIORIDADE 4: Modelos de Mensagem configuráveis com variáveis dinâmicas por documento (CT-e, MDF-e, CIOT ANTT e Averbação de Seguro com tags {{nome_cliente}}, {{numero_documento}}, {{seguradora}}, {{numero_apolice}}, {{ramo_seguro}}, {{valor_carga}}, {{comprovante_arquivo}}, {{viagem}}, etc.)',
     'PRIORIDADE 4: Modelo de e-mail dedicado para CIOT Registrado (ANTT) e para Averbação de Seguro Concluída (Lei 14.599/2023), com atalhos dedicados de criação e anexo automático do comprovante digital',
+    'PRIORIDADE 4: Modelo dedicado de Pacote de Viagem ao Motorista (bundle) com salvaguarda anti-duplicidade bundle_{tripId}_{driverEmail}, reunindo DACTE, DAMDFE, CTRB em PDF, orientações de VPO/TAG e resumo da rota',
     'PRIORIDADE 4: Regra inegociável de envio seguro: apenas averbações com status oficial "averbada" e com comprovante retornado (PDF/XML) são despachadas; sem comprovante, gera pendência honesta com motivo',
     'PRIORIDADE 4: Controle anti-duplicidade estrito por chave única (document_type + document_id + email)',
     'Gestão completa de regras de e-mail (criação, edição, aprovação por administrador, rejeição e exclusão)',
@@ -111,6 +112,12 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
       name: 'Novo Destinatário de Documentos',
       type: 'Botão com Modal',
       purpose: 'Cadastra cliente/parceiro que deve receber os arquivos fiscais autorizados.',
+    },
+    {
+      name: 'Criar Modelo Motorista',
+      type: 'Botão de Atalho Rápido',
+      purpose:
+        'Abre o modal já pré-carregado com os parâmetros operacionais do Pacote de Viagem ao Motorista (bundle), tags de veículo, CT-e, MDF-e, CTRB, CIOT e VPO/TAG.',
     },
     {
       name: 'Criar Modelo Averbação',
@@ -151,7 +158,7 @@ const TRAINING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Conectores Gmail e Outlook via Skip Connectors API.',
   ],
   flowsAndDependencies: [
-    'Documento entra na Etapa 3 ➔ É autorizado na SEFAZ ➔ Etapa 4 identifica destinatários cadastrados ➔ Dispara e-mail com DACTE/DAMDFE/XML anexos ➔ Registra em logs.',
+    'Documento entra na Etapa 3 ➔ É autorizado na SEFAZ ➔ Etapa 4 identifica destinatários cadastrados ➔ Dispara e-mail com DACTE/DAMDFE/XML anexos ➔ Com a operação liberada na Central de Operações, despacha o Pacote de Viagem completo ao condutor com chave bundle_{tripId}_{driverEmail} anti-duplicação ➔ Registra em document_dispatch_logs.',
   ],
   dataSourceAndDestination: {
     origin: 'Parâmetros definidos por administradores e gestores.',
@@ -546,6 +553,17 @@ export const EmailAgentTrainingPage: React.FC = () => {
       )
       setTmplDesc(
         'Modelo dedicado para envio automático de comprovante de averbação aos embarcadores e tomadores de seguro.',
+      )
+    } else if (targetType === 'bundle') {
+      setTmplName('Modelo Padrão - Pacote de Viagem ao Motorista')
+      setTmplSubject(
+        '{{empresa_emissora}} - Pacote de Viagem Liberado: Viagem {{viagem}} (MDF-e {{numero_documento}})',
+      )
+      setTmplBody(
+        `Olá, {{nome_cliente}}!\n\nSua viagem {{viagem}} foi devidamente liberada pela Central de Operações de Transporte da {{empresa_emissora}}.\n\nSeguem os dados operacionais e os documentos de porte obrigatório anexos:\n\n• Veículo: {{placa_veiculo}}\n• Origem / Destino: {{origem_destino}}\n• Distância Rodoviária: {{distancia_km}} km\n• CT-e: nº {{numero_cte}} (Protocolo: {{protocolo_cte}})\n• MDF-e: nº {{numero_documento}} (Protocolo: {{protocolo_autorizacao}})\n• CTRB (Contrato de Frete): nº {{numero_contrato}}\n• CIOT ANTT: {{numero_ciot}}\n• Vale-Pedágio (VPO): R$ {{valor_vpo}} ({{comprovante_vpo}})\n• TAG / Meio Eletrônico: {{tag_veiculo}}\n\nPor favor, confirme o recebimento e cumpra rigorosamente a rota rodoviária aprovada e os tempos de descanso da Lei nº 13.103/2015.\n\nBoa viagem!\n{{empresa_emissora}}`,
+      )
+      setTmplDesc(
+        'Enviado automaticamente ao motorista com DACTE, DAMDFE, CTRB em PDF, orientações de VPO/TAG e resumo da rota quando a operação for liberada.',
       )
     } else {
       setTmplName('')
@@ -1064,7 +1082,16 @@ export const EmailAgentTrainingPage: React.FC = () => {
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleOpenCreateTemplate('bundle')}
+                className="text-xs font-semibold border-cyan-300 text-cyan-800 hover:bg-cyan-50 gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5 text-cyan-600" />
+                Criar Modelo Motorista
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -1099,6 +1126,7 @@ export const EmailAgentTrainingPage: React.FC = () => {
             {templates.map((tmpl) => {
               const isCiot = tmpl.document_type === 'ciot'
               const isInsurance = tmpl.document_type === 'insurance'
+              const isBundle = tmpl.document_type === 'bundle'
               const docTypeLabel =
                 tmpl.document_type === 'cte'
                   ? 'CT-e'
@@ -1110,17 +1138,21 @@ export const EmailAgentTrainingPage: React.FC = () => {
                         ? 'Averbação de Seguro'
                         : tmpl.document_type === 'vpo'
                           ? 'Vale Pedágio (VPO)'
-                          : 'Dossiê Fiscal'
+                          : tmpl.document_type === 'bundle'
+                            ? 'Pacote de Viagem (Motorista)'
+                            : 'Dossiê Fiscal'
 
               return (
                 <div
                   key={tmpl.id}
                   className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between space-y-3 ${
-                    isInsurance
-                      ? 'border-emerald-300 ring-1 ring-emerald-100'
-                      : isCiot
-                        ? 'border-indigo-300 ring-1 ring-indigo-100'
-                        : 'border-slate-200'
+                    isBundle
+                      ? 'border-cyan-300 ring-1 ring-cyan-100'
+                      : isInsurance
+                        ? 'border-emerald-300 ring-1 ring-emerald-100'
+                        : isCiot
+                          ? 'border-indigo-300 ring-1 ring-indigo-100'
+                          : 'border-slate-200'
                   }`}
                 >
                   <div>
@@ -1232,6 +1264,36 @@ export const EmailAgentTrainingPage: React.FC = () => {
               <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800 font-bold">
                 {'{{comprovante_arquivo}}'}
               </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{placa_veiculo}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{origem_destino}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{distancia_km}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{numero_cte}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{protocolo_cte}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{numero_contrato}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{numero_ciot}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{valor_vpo}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{comprovante_vpo}}'}
+              </code>
+              <code className="bg-white px-1.5 py-0.5 rounded border border-cyan-300 text-cyan-800 font-bold">
+                {'{{tag_veiculo}}'}
+              </code>
             </div>
             <p className="text-[10px] text-slate-500 pt-1">
               * Para modelos de <strong>CIOT</strong>, utilize <code>{'{{provedor_ipef}}'}</code>,{' '}
@@ -1239,7 +1301,11 @@ export const EmailAgentTrainingPage: React.FC = () => {
               modelos de <strong>Averbação de Seguro</strong>, utilize{' '}
               <code>{'{{seguradora}}'}</code>, <code>{'{{numero_apolice}}'}</code>,{' '}
               <code>{'{{ramo_seguro}}'}</code>, <code>{'{{valor_carga}}'}</code> e{' '}
-              <code>{'{{comprovante_arquivo}}'}</code> (anexo automático).
+              <code>{'{{comprovante_arquivo}}'}</code> (anexo automático). Para o{' '}
+              <strong>Pacote do Motorista (bundle)</strong>, utilize tags como{' '}
+              <code>{'{{placa_veiculo}}'}</code>, <code>{'{{numero_cte}}'}</code>,{' '}
+              <code>{'{{numero_contrato}}'}</code>, <code>{'{{numero_ciot}}'}</code>,{' '}
+              <code>{'{{valor_vpo}}'}</code> e <code>{'{{tag_veiculo}}'}</code>.
             </p>
           </div>
         </CardContent>
@@ -2017,7 +2083,7 @@ export const EmailAgentTrainingPage: React.FC = () => {
                     <option value="ciot">Comprovante CIOT</option>
                     <option value="insurance">Averbação de Seguro RCTR-C</option>
                     <option value="vpo">Vale Pedágio Obrigatório (VPO)</option>
-                    <option value="bundle">Dossiê Completo de Regularização</option>
+                    <option value="bundle">Pacote de Viagem ao Motorista (bundle)</option>
                   </select>
                 </div>
               </div>

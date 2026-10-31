@@ -48,10 +48,28 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
         'Gera o Contrato de Transporte Rodoviário de Bens (CTRB) a partir da Ordem de Transporte, dados bancários e modelo vigente. Inclui botão de impressão e download em formato padrão A4 operacional (não fiscal).',
     },
     {
+      name: 'Etapa 8 "CIOT (ANTT / IPEF)"',
+      type: 'Compliance ANTT',
+      description:
+        'Cadastramento e protocolo do CIOT perante IPEF credenciada. Sem credenciais ativas, exibe honestamente "Aguardando configuração".',
+    },
+    {
+      name: 'Etapa 9 "Vale-Pedágio Obrigatório (VPO) & TAG"',
+      type: 'Gestão FVPO',
+      description:
+        'Solicitação e confirmação de crédito de pedágio em TAG (Sem Parar, ConectCar, Veloe, Repom, MoveMais). Regra "solicitado ≠ confirmado": a solicitação registra o pedido; a confirmação com IDVPO/Voucher é necessária para liberar a viagem. Idempotência vpo_{tripId}_{plazas}_{val} impede duplicação.',
+    },
+    {
       name: 'Etapa 10 "MDF-e SEFAZ" e Modal DAMDFE com IDVPO (Passo 5)',
       type: 'Manifesto Eletrônico / PDF A4',
       description:
         'Preparação do MDF-e agrupando CT-es autorizados, CIOT, seguro e grupo de Vale-Pedágio com IDVPO no campo nCompra do grupo de vale-pedágio. Exige CT-e autorizado prévio. Modal DAMDFE com visualização, impressão e tarja de advertência quando não autorizado.',
+    },
+    {
+      name: 'Etapa 11 "Despacho Automático do Pacote ao Motorista"',
+      type: 'Agente de Envio Automático',
+      description:
+        'Envio por e-mail (via conector de usuário) do pacote completo de viagem: DACTE, DAMDFE, CTRB em PDF, orientações de VPO/TAG e resumo da rota. Salvaguarda anti-duplicidade estrita bundle_{tripId}_{driverEmail} impede disparos duplicados na reexecução.',
     },
     {
       name: 'Aba "Modelos de Contrato CTRB"',
@@ -78,6 +96,9 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
     'Regra Anti-Duplicação do CTRB: Regenerar o mesmo contrato para a mesma Ordem de Transporte atualiza o documento existente e incrementa a versão, sem criar registros duplicados.',
     'Assinatura Eletrônica Honesta: Sem provedor jurídico ativo (Clicksign/DocuSign), exibe "Aguardando configuração" na Central de Conectores, sem falsa simulação de documento assinado.',
     'Regra do VPO (Lei nº 10.209/2001): O Vale-Pedágio Obrigatório é responsabilidade do embarcador e deve ser pago antes do início da viagem através de dispositivo eletrônico (TAG ou cartão IPEF).',
+    'Regra Solicitado ≠ Confirmado no VPO: registrar a solicitação não quita a obrigação legal até haver confirmação com IDVPO/Voucher válido.',
+    'Idempotência do VPO: chave vpo_{tripId}_{plazas}_{val} impede créditos repetidos na mesma viagem em reprocessamentos.',
+    'Anti-duplicidade do Pacote do Motorista: chave bundle_{tripId}_{driverEmail} impede múltiplos envios do pacote à caixa do condutor.',
     'Conectores Transparentes: Em hipótese alguma simula autorização fiscal da SEFAZ ou concessão de crédito financeiro. Serviços sem token ativo exibem "Aguardando configuração".',
     'Regra de Transmissão Fiscal (Passo 5): Protocolo oficial gravado SOMENTE com confirmação do webservice da SEFAZ. Retransmissão da mesma operação não duplica documentos fiscais nem números de emissão. Documentos já autorizados são bloqueados contra retransmissão.',
     'Regra de Dependência do MDF-e: Conforme a legislação fiscal, o MDF-e exige CT-e prévio autorizado pela SEFAZ. Sem CT-e autorizado, a transmissão é bloqueada com mensagem clara.',

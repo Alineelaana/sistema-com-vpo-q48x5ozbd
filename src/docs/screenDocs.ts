@@ -12,7 +12,11 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Preenchimento automático da Ordem de Transporte a partir da NF-e identificada pelo agente de cargas (sem redigitar remetente, destinatário, mercadoria, pesos e valores)',
     'Proteção anti-duplicação: impede gerar mais de uma ordem ativa para a mesma chave de NF-e',
     'Cálculo e validação obrigatória do Piso Mínimo de Frete ANTT (Resolução nº 5.867/2019)',
-    'Destaque e controle de quitação do Vale-Pedágio Obrigatório (Lei 10.209/01) com cálculo por praça e eixos',
+    'Destaque e controle de quitação do Vale-Pedágio Obrigatório (Lei 10.209/01) com cálculo por praça e eixos, vinculação da TAG e chave de idempotência vpo_{tripId}_{plazas}_{val}',
+    'Distinção rigorosa de status no VPO: "solicitado ≠ confirmado" — solicitação registra pedido na concessionária/operadora, enquanto confirmação exige IDVPO/Voucher homologado ativo',
+    'Falha ou ausência de confirmação do VPO deixa pendência explícita de regularização, bloqueando a liberação da viagem',
+    'Proteção anti-duplicidade estrita no VPO: reprocessamento com crédito já confirmado preserva o mesmo IDVPO/Voucher sem duplicar débitos/créditos',
+    'Despacho automático do Pacote de Viagem ao Motorista com salva-guarda anti-duplicidade bundle_{tripId}_{driverEmail}, reunindo DACTE, DAMDFE, CTRB em PDF, orientações de VPO/TAG e resumo da rota',
     'Catálogo e status real dos Conectores de Integração: SEFAZ, ANTT/IPEF, Concessionárias, Seguradoras, WhatsApp e Assinatura Digital exibidos honestamente como "Aguardando configuração" quando não há credenciais',
     'Nunca simula autorização fiscal ou concessão de crédito/pagamento financeiro',
     'Trilha de auditoria completa gravada na coleção audit_logs a cada avanço ou alteração',
@@ -37,10 +41,28 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
         'Comanda os hooks do backend para checar pendências e avançar as etapas autorizadas.',
     },
     {
+      name: 'Transmitir / Validar CIOT',
+      type: 'Ação de Compliance ANTT',
+      purpose:
+        'Submete os dados da viagem perante a IPEF cadastrada. Sem credenciais válidas, mantém status honesto "Aguardando configuração" perante a ANTT.',
+    },
+    {
+      name: 'Solicitar / Confirmar VPO & TAG',
+      type: 'Ação Operacional FVPO',
+      purpose:
+        'Permite solicitar crédito à operadora informando TAG e confirmar o IDVPO gerado. Aplica idempotência vpo_{tripId}_{plazas}_{val} e bloqueia duplicação de crédito.',
+    },
+    {
+      name: 'Disparar Pacote ao Motorista',
+      type: 'Ação de Despacho Documental',
+      purpose:
+        'Despacha automaticamente o pacote completo com DACTE, DAMDFE, CTRB, comprovante de VPO e rota para o e-mail do condutor usando chave bundle_{tripId}_{driverEmail}.',
+    },
+    {
       name: 'Liberar Viagem',
       type: 'Botão de Bloqueio/Liberação',
       purpose:
-        'Aprova a liberação da ordem caso veículo, motorista, piso mínimo e VPO estejam regulares.',
+        'Aprova a liberação da ordem caso veículo, motorista, piso mínimo legal e VPO confirmado estejam estritamente regulares.',
     },
     {
       name: 'Aba Conectores de Integração',
@@ -51,9 +73,12 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   ],
   businessRules: [
     'Apenas uma Ordem de Transporte pode ser vinculada à mesma chave de NF-e.',
-    'O frete contratado deve respeitar o Piso Mínimo da ANTT (Res. 5.867/2019) ou receber aprovação executiva.',
-    'O VPO é de responsabilidade do embarcador e deve ser pago antes da viagem via TAG ou cartão homologado.',
-    'Sem simulação fiscal: na ausência de certificado digital A1 ou credenciais SEFAZ, a etapa fica em "Aguardando configuração".',
+    'O frete contratado deve respeitar o Piso Mínimo da ANTT (Res. 5.867/2019) ou receber aprovação executiva. Frete abaixo do piso bloqueia peremptoriamente CTRB e liberação.',
+    'O VPO é de responsabilidade do embarcador (Lei nº 10.209/2001) e deve ser pago antes da viagem via TAG ou cartão homologado.',
+    'Regra Solicitado ≠ Confirmado no VPO: registrar a solicitação não quita a obrigação legal até haver confirmação com IDVPO/Voucher válido.',
+    'Idempotência do VPO: chave vpo_{tripId}_{plazas}_{val} impede créditos repetidos na mesma viagem.',
+    'Anti-duplicidade do Pacote do Motorista: chave bundle_{tripId}_{driverEmail} impede múltiplos envios do pacote à caixa do condutor.',
+    'Sem simulação fiscal: na ausência de certificado digital A1 ou credenciais SEFAZ/IPEF, as etapas permanecem como "Aguardando configuração".',
   ],
   agentsAndAutomations: [
     'Hook operations_orchestrator.pb.js orquestra o ciclo de vida da ordem e aciona fiscal_regularization e dispatch_agent.',
@@ -498,6 +523,7 @@ export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Classificação de perfil do transportador (TAC-Equiparado, ETC, TAC-Independente)',
     'Integração com viagens operacionais e bloqueio de expedição configurável',
     'Salvaguarda contra promessas irreais: esclarece que não existe emissão mágica direta na ANTT sem IPEF homologada',
+    'Status honesto: na falta de credencial de IPEF cadastrada na tela Empresa, permanece como "Aguardando configuração"',
     'Despacho na Etapa 4: CIOTs com status registered têm comprovantes enviados aos destinatários cadastrados',
   ],
   fieldsAndButtons: [
@@ -515,6 +541,7 @@ export const CIOT_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'CIOT e VPO são obrigações DISTINTAS: possuem finalidades, coleções e normativas diferentes.',
     'Não prometer CIOT direto na ANTT sem custo: a integração exige credencial de IPEF cadastrada.',
+    'Sem simulação: sem credencial ativa em Configurações > Empresa, o status é mantido como "Aguardando configuração".',
     'Apenas CIOTs devidamente registrados com protocolo IPEF/ANTT são enviados na Etapa 4.',
   ],
   agentsAndAutomations: [
@@ -600,6 +627,8 @@ export const VPO_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
     'Configuração rápida por tipo de veículo e quantidade de eixos (2 a 9 eixos)',
     'Cálculo do valor por eixo e custo total de pedágio ida e volta',
     'Demonstração do destaque de VPO no frete sem retenção tributária',
+    'Vinculação com TAG e meio eletrônico homologado perante as operadoras (Sem Parar, ConectCar, Veloe, Repom, MoveMais)',
+    'Aplicação da chave de idempotência vpo_{tripId}_{plazas}_{val} na orquestração da ordem para impedir créditos duplicados',
   ],
   fieldsAndButtons: [
     {
@@ -621,6 +650,8 @@ export const VPO_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
   businessRules: [
     'O Vale Pedágio deve ser entregue em meio eletrônico habilitado pela ANTT antes do início da viagem.',
     'É vedado o desconto do valor do pedágio do valor do frete contratado.',
+    'Regra Solicitado ≠ Confirmado: a solicitação perante a operadora é uma intenção registrada; a liberação da viagem exige IDVPO/Voucher confirmado.',
+    'Idempotência mandatória: reprocessamentos preservam o voucher existente para evitar dupla cobrança ao embarcador.',
   ],
   agentsAndAutomations: [
     'Métrica utilizada na composição de custos do frete em viagens operacionais.',
