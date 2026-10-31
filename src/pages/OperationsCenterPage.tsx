@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FileText,
   Truck,
@@ -20,6 +21,7 @@ import {
   Lock,
   AlertTriangle,
   AlertCircle,
+  Compass,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -163,6 +165,7 @@ const WORKFLOW_SEQUENCE: StageDef[] = [
 
 export function OperationsCenterPage() {
   const { toast } = useToast()
+  const navigate = useNavigate()
 
   // Estados principais
   const [orders, setOrders] = useState<Trip[]>([])
@@ -1012,6 +1015,33 @@ export function OperationsCenterPage() {
               {/* Ações Específicas conforme a etapa */}
               <div className="p-3 bg-zinc-900/30 rounded-lg border border-zinc-800 text-xs space-y-2">
                 <span className="font-bold text-zinc-300 text-xs block">Ações Disponíveis:</span>
+
+                {selectedStageKey === 'roteirizacao' && (
+                  <div className="p-2.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg space-y-1.5 mb-2">
+                    <span className="font-bold text-indigo-300 block text-xs">
+                      Roteirizador Inteligente Integrado (Passo 2)
+                    </span>
+                    <p className="text-zinc-400 text-[11px]">
+                      Acesse a tela de Roteirização para conferir a distância rodoviária real,
+                      definir waypoints, calcular praças de pedágio por eixo com tarifas versionadas
+                      e aprovar a rota.
+                    </p>
+                    <div className="pt-1 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedStageKey(null)
+                          navigate('/routing')
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold gap-1"
+                      >
+                        <Compass className="h-3.5 w-3.5" />
+                        Abrir Roteirizador Inteligente
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-zinc-400 text-[11px]">
                   Você pode comandar o reprocessamento desta etapa sem reiniciar as etapas
                   concluídas anteriormente.

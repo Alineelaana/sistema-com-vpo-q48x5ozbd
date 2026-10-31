@@ -1,31 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * Hook de Orquestração da Máquina de Estados da Operação de Transporte (TMS Passo 1)
+ * Hook de Orquestração da Máquina de Estados da Operação de Transporte (TMS Passo 1 & Passo 2)
  *
- * Integra com os hooks existentes (email_agent, cargo_agent, regularization, dispatch_agent)
- * SEM duplicar agentes nem funcionalidades.
- *
- * Sequência de referência:
- * 1. NF-e recebida (vinculada pelo agente de cargas ou manual)
- * 2. Ordem de Transporte (registro central estendido em trips)
- * 3. Identificação Veículo/Motorista
- * 4. Roteirização (origem, destino, distância, eixos)
- * 5. Cálculo e validação do Piso Mínimo (ANTT Res. 5.867/2019)
- * 6. CT-e (Nuvem Fiscal / SEFAZ via hook fiscal_regularization)
- * 7. Contrato de Transporte / CTRB
- * 8. CIOT (Obrigatório ANTT / IPEF)
- * 9. VPO e confirmação de pagamento na TAG
- * 10. MDF-e (Manifesto Eletrônico)
- * 11. Envio dos Documentos (dispatch_agent aos destinatários)
- * 12. Liberação da Viagem
- *
- * Status por etapa: pendente | em_processamento | concluida | requer_atencao | erro
+ * Inclui:
+ * 1. NF-e recebida -> Ordem de Transporte
+ * 2. Máquina de estados das 12 etapas
+ * 3. Conectores honestos ("Aguardando configuração" quando sem credenciais reais)
+ * 4. ROTEIRIZADOR INTELIGENTE (Passo 2):
+ *    - POST /backend/v1/routing/calculate: calcula pedágios por praça/categoria (eixos) com tarifas versionadas no banco
+ *    - POST /backend/v1/routing/approve: aprova rota na Ordem de Transporte com anti-duplicação, atualiza VPO, MDF-e e frete
+ *    - GET /backend/v1/routing/plazas: consulta praças de pedágio e tarifas vigentes
  *
  * Regras inegociáveis:
- * - NUNCA simular autorização fiscal ou crédito financeiro/VPO.
- * - Integrações sem credenciais cadastradas retornam explicitamente "aguardando_configuracao".
- * - Auditoria de toda ação em audit_logs.
+ * - NUNCA inventar distância rodoviária ou usar linha reta para cálculo fiscal/VPO.
+ * - Anti-duplicidade estrita em aprovação e recálculo.
+ * - Toda ação auditada em audit_logs.
  */
 
 // 1. Rota para gerar Ordem de Transporte a partir de NF-e recebida
@@ -190,13 +180,14 @@ routerAdd(
           },
         },
         roteirizacao: {
-          status: 'concluida',
+          status: 'requer_atencao',
           updated_at: nowIso,
-          message: `Rota planejada: São Paulo/SP ➔ Curitiba/PR (~${estimatedDistance} km).`,
+          message: `Rota sugerida: São Paulo/SP ➔ Curitiba/PR. Requer conferência da distância rodoviária real e aprovação da rota.`,
           details: {
             origin: 'São Paulo/SP',
             destination: 'Curitiba/PR',
             distance_km: estimatedDistance,
+            approved: false,
           },
         },
         piso_minimo: {
@@ -204,8 +195,8 @@ routerAdd(
           updated_at: nowIso,
           message:
             floorStatus === 'validado'
-              ? `Frete de R$ ${freightValue.toFixed(2)} cumpre o piso mínimo ANTT (R$ ${estimatedFloor.toFixed(2)}).`
-              : `Frete acordado (R$ ${freightValue.toFixed(2)}) abaixo do piso mínimo ANTT estimado (R$ ${estimatedFloor.toFixed(2)}). Requer aprovação.`,
+              ? `Frete de R$ ${freightValue.toFixed(2)} cumpre o piso mínimo ANTT preliminar.`
+              : `Frete acordado abaixo do piso mínimo preliminar. Requer aprovação.`,
           details: {
             freight_value: freightValue,
             minimum_floor: estimatedFloor,
@@ -233,13 +224,13 @@ routerAdd(
         vpo: {
           status: 'requer_atencao',
           updated_at: nowIso,
-          message: `VPO de R$ ${vpoValue.toFixed(2)} calculado. Aguardando compra/carregamento no cartão/TAG.`,
+          message: `VPO aguarda aprovação formal da rota e cálculo exato das praças.`,
           details: { vpo_value: vpoValue, axles: axlesCount, plazas: tollPlazas },
         },
         mdfe: {
           status: 'pendente',
           updated_at: nowIso,
-          message: 'MDF-e aguardando autorização do CT-e.',
+          message: 'MDF-e aguardando aprovação da rota e autorização do CT-e.',
           details: {},
         },
         envio: {
@@ -312,6 +303,7 @@ routerAdd(
       tripRec.set('contract_number', `CTRB-${year}-${String(nextOpIndex).padStart(4, '0')}`)
       tripRec.set('contract_status', 'pendente')
       tripRec.set('operation_status', 'requer_atencao')
+      tripRec.set('route_approved', false)
       tripRec.set('workflow_stages', JSON.stringify(workflowStages))
 
       e.app.save(tripRec)
@@ -320,7 +312,7 @@ routerAdd(
       fiscalDoc.set('status', 'linked')
       e.app.save(fiscalDoc)
 
-      // Registrar ou atualizar cargo_identifications correspondente
+      // Sincronizar cargo_identifications correspondente
       try {
         const identCol = e.app.findCollectionByNameOrId('cargo_identifications')
         const existingIdent = e.app.findRecordsByFilter(
@@ -414,8 +406,8 @@ routerAdd(
       const authUser = e.auth
       const body = e.requestInfo().body || {}
       const tripId = body.trip_id
-      const targetStage = body.stage // 'nfe' | 'ordem' | 'veiculo_motorista' | 'roteirizacao' | 'piso_minimo' | 'cte' | 'contrato' | 'ciot' | 'vpo' | 'mdfe' | 'envio' | 'liberacao'
-      const action = body.action || 'process' // 'process' | 'reprocess' | 'skip'
+      const targetStage = body.stage
+      const action = body.action || 'process'
 
       if (!tripId) {
         return e.json(400, { success: false, error: 'trip_id é obrigatório.' })
@@ -440,9 +432,33 @@ routerAdd(
       const nowIso = new Date().toISOString()
       let stageResult = { success: true, message: '', isAuthorized: false }
 
-      // Processar lógica da etapa solicitada
-      if (targetStage === 'cte') {
-        // Verificar se existe CT-e associado
+      if (targetStage === 'roteirizacao') {
+        const isApproved = trip.getBool('route_approved')
+        const distance = trip.getFloat('distance_km') || 0
+        if (isApproved && distance > 0) {
+          stages.roteirizacao = {
+            status: 'concluida',
+            updated_at: nowIso,
+            message: `Rota aprovada: ${trip.getString('origin_city')}/${trip.getString('origin_state')} ➔ ${trip.getString('destination_city')}/${trip.getString('destination_state')} (${distance} km rodoviários). VPO e MDF-e sincronizados.`,
+            details: {
+              distance_km: distance,
+              route_approved: true,
+              tariff_version: trip.getString('tariff_version_used'),
+              highways: trip.getString('highways'),
+            },
+          }
+          stageResult.message = stages.roteirizacao.message
+        } else {
+          stages.roteirizacao = {
+            status: 'requer_atencao',
+            updated_at: nowIso,
+            message:
+              'A rota ainda não foi aprovada pelo Roteirizador Inteligente. Defina os waypoints, praças e confirme a distância rodoviária.',
+            details: { distance_km: distance, route_approved: false },
+          }
+          stageResult.message = stages.roteirizacao.message
+        }
+      } else if (targetStage === 'cte') {
         const ctes = e.app.findRecordsByFilter(
           'cte_documents',
           `trip_id = '${tripId}'`,
@@ -508,19 +524,23 @@ routerAdd(
       } else if (targetStage === 'vpo') {
         const vpoVal = trip.getFloat('vpo_value') || trip.getInt('vpo_value') || 0
         const voucher = trip.getString('vpo_voucher_number')
-        if (vpoVal > 0 && voucher) {
+        const routeApproved = trip.getBool('route_approved')
+        if (vpoVal > 0 && routeApproved) {
           stages.vpo = {
-            status: 'concluida',
+            status: voucher ? 'concluida' : 'requer_atencao',
             updated_at: nowIso,
-            message: `VPO de R$ ${vpoVal.toFixed(2)} emitido com comprovante ${voucher} na operadora habilitada.`,
-            details: { vpo_value: vpoVal, voucher },
+            message: voucher
+              ? `VPO de R$ ${vpoVal.toFixed(2)} emitido com comprovante ${voucher} na operadora habilitada.`
+              : `VPO de R$ ${vpoVal.toFixed(2)} calculado com base na rota aprovada (${trip.getInt('toll_tollgate_count')} praças). Aguardando comprovante do voucher/TAG.`,
+            details: { vpo_value: vpoVal, voucher, plazas: trip.getInt('toll_tollgate_count') },
           }
           stageResult.message = stages.vpo.message
         } else {
           stages.vpo = {
             status: 'requer_atencao',
             updated_at: nowIso,
-            message: `VPO de R$ ${vpoVal.toFixed(2)} calculado, aguardando confirmação do número do voucher/TAG.`,
+            message:
+              'VPO pendente: a rota rodoviária precisa ser aprovada com cálculo de praças por eixo.',
             details: { vpo_value: vpoVal },
           }
           stageResult.message = stages.vpo.message
@@ -541,8 +561,12 @@ routerAdd(
             updated_at: nowIso,
             message: isAuth
               ? `MDF-e nº ${mdfe.getInt('mdfe_number')} autorizado perante a SEFAZ.`
-              : `MDF-e nº ${mdfe.getInt('mdfe_number')} em status ${mdfe.getString('status')}. Requer CT-e autorizado.`,
-            details: { mdfe_id: mdfe.id, status: mdfe.getString('status') },
+              : `MDF-e nº ${mdfe.getInt('mdfe_number')} em status ${mdfe.getString('status')}. Percurso alimentado pela rota.`,
+            details: {
+              mdfe_id: mdfe.id,
+              status: mdfe.getString('status'),
+              route_ufs: mdfe.getString('route_ufs'),
+            },
           }
           stageResult.message = stages.mdfe.message
         } else {
@@ -555,7 +579,6 @@ routerAdd(
           stageResult.message = stages.mdfe.message
         }
       } else if (targetStage === 'envio') {
-        // Consultar se houve envio de documentos na Etapa 4
         const logs = e.app.findRecordsByFilter(
           'document_dispatch_logs',
           `trip_id = '${tripId}' || trip_code = '${trip.getString('trip_code')}'`,
@@ -588,16 +611,15 @@ routerAdd(
         }
         stageResult.message = stages.envio.message
       } else if (targetStage === 'liberacao') {
-        // Validação estrita de liberação da viagem
-        // Condições de bloqueio: veículo, motorista, piso mínimo aprovado, CT-e transmitido, VPO regularizado
         const hasVehicle = !!trip.getString('vehicle_id') || !!trip.getString('vehicle_plate')
         const hasDriver = !!trip.getString('driver_id')
         const isFloorOk = trip.getString('minimum_floor_status') !== 'abaixo_piso'
-        const hasVpo = (trip.getFloat('vpo_value') || 0) > 0
+        const routeApproved = trip.getBool('route_approved')
 
         const blockers = []
         if (!hasVehicle) blockers.push('Veículo não selecionado')
         if (!hasDriver) blockers.push('Motorista não alocado')
+        if (!routeApproved) blockers.push('Rota não aprovada no Roteirizador')
         if (!isFloorOk) blockers.push('Frete abaixo do piso mínimo ANTT sem justificativa')
 
         if (blockers.length === 0) {
@@ -672,7 +694,6 @@ routerAdd(
   '/backend/v1/operations/connectors-status',
   (e) => {
     try {
-      // Buscar configurações existentes da empresa para validar credenciais reais
       let company = null
       try {
         const recs = e.app.findRecordsByFilter('company_settings', '1=1', '', 1, 0)
@@ -684,9 +705,36 @@ routerAdd(
       const fvpoProvider = company ? company.getString('fvpo_provider') : 'none'
       const hasCertificate = company && company.getString('certificate_status') === 'configured'
 
-      // Contratos de conectores com interfaces prontas
-      // Conectores sem credenciais aparecem como "Aguardando configuração" (regra inegociável do usuário)
+      // Catálogo com os conectores solicitados: Roteirização e Tarifas de pedágio em status honesto
       const connectors = [
+        {
+          id: 'routing_external_provider',
+          name: 'Provedor Externo de Roteirização (Google Maps / Maplink / HERE Heavy)',
+          category: 'logistica',
+          provider: 'Aguardando Provedor (API Key não configurada)',
+          status: 'aguardando_configuracao',
+          status_label: 'Aguardando configuração',
+          description:
+            'Interface para consumo de rotas rodoviárias com restrições geométricas para veículos pesados (altura, peso por eixo, pontes e balanças).',
+          has_credentials: false,
+          simulation_allowed: false,
+          notes:
+            'Sem credenciais ativas. O sistema opera em modo de distância rodoviária manual informada pelo operador ou motor nativo Connect (nunca linha reta).',
+        },
+        {
+          id: 'toll_tariffs_provider',
+          name: 'Base de Tarifas de Pedágio (ANTT / Concessionárias)',
+          category: 'pedagio',
+          provider: 'Banco de Tarifas Versionadas Local (ANTT-2026.1)',
+          status: 'configurado',
+          status_label: 'Base Versionada Ativa',
+          description:
+            'Coleções locais toll_plazas e toll_tariffs com tarifas vigentes por categoria de eixos e registro obrigatório da versão utilizada.',
+          has_credentials: true,
+          simulation_allowed: true,
+          notes:
+            'Tarifas versionadas locais ativas no banco. Para webservice em tempo real de concessionárias, cadastre a API na aba de configurações.',
+        },
         {
           id: 'sefaz_fiscal',
           name: 'SEFAZ / Emissão Fiscal (CT-e e MDF-e)',
@@ -732,33 +780,6 @@ routerAdd(
           simulation_allowed: false,
           notes:
             'Simulação no ambiente de teste jamais gera crédito real ou quitação de tarifa em praça de pedágio.',
-        },
-        {
-          id: 'heavy_routing',
-          name: 'Roteirização para Veículos Pesados',
-          category: 'logistica',
-          provider: 'Roteirizador Connect (Restrições de Ponte, Balança e Eixos)',
-          status: 'configurado',
-          status_label: 'Motor de Rota Ativo',
-          description:
-            'Cálculo de rotas rodoviárias considerando gabaritos de altura, peso máximo por eixo e rota segura de caminhão.',
-          has_credentials: true,
-          simulation_allowed: true,
-          notes: 'Motor nativo interno do sistema operacional.',
-        },
-        {
-          id: 'toll_tariffs',
-          name: 'Consulta de Tarifas de Pedágio Atualizadas',
-          category: 'pedagio',
-          provider: 'Tabela ANTT / Concessionárias Federais & Estaduais',
-          status: 'configurado',
-          status_label: 'Base Tarifária Integrada',
-          description:
-            'Cálculo multi-praça multiplicando eixos do veículo pela tarifa vigente de cada concessionária da rota.',
-          has_credentials: true,
-          simulation_allowed: true,
-          notes:
-            'Atualização periódica conforme portarias de reajuste tarifário das agências reguladoras (ANTT, ARTESP, AGR).',
         },
         {
           id: 'insurance_averbacao',
@@ -820,6 +841,541 @@ routerAdd(
       return e.json(500, {
         success: false,
         error: err ? err.message || String(err) : 'Erro ao carregar conectores.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 4. Rota para listar praças de pedágio e tarifas vigentes versionadas
+// GET /backend/v1/routing/plazas
+routerAdd(
+  'GET',
+  '/backend/v1/routing/plazas',
+  (e) => {
+    try {
+      const highwayFilter = e.requestInfo().query.highway || ''
+      const stateFilter = e.requestInfo().query.state || ''
+
+      let filter = 'is_active = true'
+      if (highwayFilter) filter += ` && highway ~ '${highwayFilter}'`
+      if (stateFilter) filter += ` && state = '${stateFilter}'`
+
+      const plazas = e.app.findRecordsByFilter('toll_plazas', filter, 'highway,km', 100, 0)
+
+      const result = []
+      for (let p of plazas) {
+        // Buscar tarifas vigentes desta praça
+        const tariffs = e.app.findRecordsByFilter(
+          'toll_tariffs',
+          `plaza_id = '${p.id}' && is_current = true`,
+          'axles',
+          20,
+          0,
+        )
+
+        const tariffsList = tariffs.map((t) => ({
+          id: t.id,
+          axles: t.getInt('axles'),
+          category: t.getString('vehicle_category'),
+          rate_per_axle: t.getFloat('rate_per_axle'),
+          total_amount: t.getFloat('total_amount'),
+          tariff_version: t.getString('tariff_version'),
+          source: t.getString('source'),
+          effective_from: t.getString('effective_from'),
+        }))
+
+        result.push({
+          id: p.id,
+          name: p.getString('name'),
+          concessionaire: p.getString('concessionaire'),
+          highway: p.getString('highway'),
+          km: p.getFloat('km'),
+          city: p.getString('city'),
+          state: p.getString('state'),
+          lat: p.getFloat('lat'),
+          lng: p.getFloat('lng'),
+          tariffs: tariffsList,
+        })
+      }
+
+      return e.json(200, {
+        success: true,
+        plazas: result,
+        count: result.length,
+        version_summary: 'ANTT-2026.1 (Tabela Oficial ANTT & Concessionárias)',
+      })
+    } catch (err) {
+      console.error('[routing:plazas] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro ao listar praças de pedágio.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 5. Rota para cálculo de pedágio da rota por categoria de veículo (eixos)
+// POST /backend/v1/routing/calculate
+routerAdd(
+  'POST',
+  '/backend/v1/routing/calculate',
+  (e) => {
+    try {
+      const body = e.requestInfo().body || {}
+      const plazaIds = body.plaza_ids || []
+      const axles = Number(body.axles) || 6
+      const isReturn = !!body.is_return
+      const distanceKm = Number(body.distance_km) || 0
+
+      // Proibido inventar distância ou usar linha reta
+      if (distanceKm <= 0) {
+        return e.json(400, {
+          success: false,
+          error:
+            'Distância rodoviária real é obrigatória (não é permitido distância zerada ou linha reta para cálculo fiscal/VPO). Informe a quilometragem rodoviária real.',
+        })
+      }
+
+      if (!Array.isArray(plazaIds) || plazaIds.length === 0) {
+        return e.json(200, {
+          success: true,
+          total_toll_cost: 0,
+          plaza_count: 0,
+          plazas_breakdown: [],
+          tariff_version: 'N/A (Sem praças informadas)',
+          tariff_source: 'Nenhuma praça selecionada no trecho',
+          estimated_duration_hours: Number((distanceKm / 65).toFixed(1)),
+          warning:
+            'Atenção: Nenhuma praça de pedágio foi associada à rota. Se a rota utiliza rodovia com pedágio, selecione as praças correspondentes.',
+        })
+      }
+
+      const breakdown = []
+      let totalCost = 0
+      let usedVersion = 'ANTT-2026.1'
+      let usedSource = 'Portaria ANTT nº 412/2026'
+
+      for (let pid of plazaIds) {
+        let plazaRec
+        try {
+          plazaRec = e.app.findRecordById('toll_plazas', pid)
+        } catch (_) {
+          continue
+        }
+
+        // Buscar tarifa vigente para o número de eixos especificado
+        const tariffs = e.app.findRecordsByFilter(
+          'toll_tariffs',
+          `plaza_id = '${pid}' && axles = ${axles} && is_current = true`,
+          '-effective_from',
+          1,
+          0,
+        )
+
+        let unitAmount = 0
+        let ratePerAxle = 0
+        let tariffVersion = 'ANTT-2026.1'
+        let tariffSource = 'ANTT'
+
+        if (tariffs.length > 0) {
+          const t = tariffs[0]
+          unitAmount = t.getFloat('total_amount')
+          ratePerAxle = t.getFloat('rate_per_axle')
+          tariffVersion = t.getString('tariff_version')
+          tariffSource = t.getString('source')
+          usedVersion = tariffVersion
+          usedSource = tariffSource
+        } else {
+          // Se não encontrou tarifa exata para o eixo, buscar qualquer tarifa vigente da praça e multiplicar por eixo
+          const anyTariff = e.app.findRecordsByFilter(
+            'toll_tariffs',
+            `plaza_id = '${pid}' && is_current = true`,
+            '-effective_from',
+            1,
+            0,
+          )
+          if (anyTariff.length > 0) {
+            ratePerAxle = anyTariff[0].getFloat('rate_per_axle') || 4.0
+            unitAmount = Number((ratePerAxle * axles).toFixed(2))
+            tariffVersion = anyTariff[0].getString('tariff_version')
+            tariffSource = anyTariff[0].getString('source')
+          } else {
+            return e.json(400, {
+              success: false,
+              error: `A praça "${plazaRec.getString('name')}" não possui versão tarifária vigente cadastrada. Bloqueio por falta de tarifa homologada.`,
+            })
+          }
+        }
+
+        const effectiveAmount = isReturn ? unitAmount * 2 : unitAmount
+        totalCost += effectiveAmount
+
+        breakdown.push({
+          plaza_id: plazaRec.id,
+          plaza_name: plazaRec.getString('name'),
+          concessionaire: plazaRec.getString('concessionaire'),
+          highway: plazaRec.getString('highway'),
+          km: plazaRec.getFloat('km'),
+          city: plazaRec.getString('city'),
+          state: plazaRec.getString('state'),
+          axles,
+          rate_per_axle: ratePerAxle,
+          unit_amount: unitAmount,
+          effective_amount: effectiveAmount,
+          tariff_version: tariffVersion,
+          tariff_source: tariffSource,
+        })
+      }
+
+      const effectivePlazasCount = isReturn ? breakdown.length * 2 : breakdown.length
+      const avgRatePerAxle =
+        effectivePlazasCount > 0
+          ? Number((totalCost / (effectivePlazasCount * axles)).toFixed(2))
+          : 0
+      const estimatedDurationHours = Number((distanceKm / 65).toFixed(1))
+
+      return e.json(200, {
+        success: true,
+        axles,
+        is_return: isReturn,
+        distance_km: distanceKm,
+        plaza_count: effectivePlazasCount,
+        total_toll_cost: Number(totalCost.toFixed(2)),
+        avg_rate_per_axle: avgRatePerAxle,
+        tariff_version_used: usedVersion,
+        tariff_source_used: usedSource,
+        estimated_duration_hours: estimatedDurationHours,
+        plazas_breakdown: breakdown,
+        limitations:
+          'Sem provedor de mapas pesados em tempo real conectado. As restrições de gabarito e pontes são baseadas nos cadastros municipais/estaduais informados pelo operador.',
+      })
+    } catch (err) {
+      console.error('[routing:calculate] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro ao calcular pedágios da rota.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 6. Rota para APROVAÇÃO DA ROTA na Ordem de Transporte
+// POST /backend/v1/routing/approve
+// Atualiza Ordem, VPO, MDF-e, calcula frete e evita duplicação de recálculos
+routerAdd(
+  'POST',
+  '/backend/v1/routing/approve',
+  (e) => {
+    try {
+      const authUser = e.auth
+      const body = e.requestInfo().body || {}
+      const tripId = body.trip_id
+      const origin = body.origin || {} // { city, state, address }
+      const destination = body.destination || {} // { city, state, address }
+      const waypoints = body.waypoints || [] // [ { city, state, order, address } ]
+      const distanceKm = Number(body.distance_km) || 0
+      const highways = body.highways || ''
+      const plazaIds = body.plaza_ids || []
+      const axles = Number(body.axles) || 6
+      const isReturn = !!body.is_return
+      const forceReapprove = !!body.force_reapprove
+
+      if (!tripId) {
+        return e.json(400, { success: false, error: 'trip_id é obrigatório.' })
+      }
+
+      if (distanceKm <= 0) {
+        return e.json(400, {
+          success: false,
+          error:
+            'A distância rodoviária real é obrigatória para aprovar a rota. Proibido usar distância estimada em linha reta ou zerada.',
+        })
+      }
+
+      let trip
+      try {
+        trip = e.app.findRecordById('trips', tripId)
+      } catch (_) {
+        return e.json(404, { success: false, error: 'Ordem de Transporte não encontrada.' })
+      }
+
+      // Prevenção de duplicidade: se já aprovada com os mesmos parâmetros exatos, informar sem duplicar
+      const alreadyApproved = trip.getBool('route_approved')
+      const currentDistance = trip.getFloat('distance_km') || 0
+      const currentTollCount = trip.getInt('toll_tollgate_count') || 0
+
+      if (
+        alreadyApproved &&
+        !forceReapprove &&
+        Math.abs(currentDistance - distanceKm) < 0.1 &&
+        currentTollCount === (isReturn ? plazaIds.length * 2 : plazaIds.length)
+      ) {
+        return e.json(200, {
+          success: true,
+          message:
+            'A rota desta Ordem de Transporte já se encontra aprovada com estes mesmos parâmetros. Nenhum cálculo duplicado foi executado.',
+          already_approved: true,
+          trip_id: trip.id,
+          operation_number: trip.getString('operation_number'),
+          vpo_value: trip.getFloat('vpo_value'),
+          distance_km: trip.getFloat('distance_km'),
+        })
+      }
+
+      // Calcular pedágios detalhados
+      let totalTollCost = 0
+      let usedTariffVersion = 'ANTT-2026.1'
+      let plazasBreakdown = []
+
+      if (plazaIds.length > 0) {
+        for (let pid of plazaIds) {
+          let pRec
+          try {
+            pRec = e.app.findRecordById('toll_plazas', pid)
+          } catch (_) {
+            continue
+          }
+
+          const tariffs = e.app.findRecordsByFilter(
+            'toll_tariffs',
+            `plaza_id = '${pid}' && axles = ${axles} && is_current = true`,
+            '-effective_from',
+            1,
+            0,
+          )
+
+          let unitAmount = 0
+          let ratePerAxle = 0
+          if (tariffs.length > 0) {
+            unitAmount = tariffs[0].getFloat('total_amount')
+            ratePerAxle = tariffs[0].getFloat('rate_per_axle')
+            usedTariffVersion = tariffs[0].getString('tariff_version')
+          } else {
+            const anyT = e.app.findRecordsByFilter(
+              'toll_tariffs',
+              `plaza_id = '${pid}' && is_current = true`,
+              '-effective_from',
+              1,
+              0,
+            )
+            if (anyT.length > 0) {
+              ratePerAxle = anyT[0].getFloat('rate_per_axle')
+              unitAmount = Number((ratePerAxle * axles).toFixed(2))
+              usedTariffVersion = anyT[0].getString('tariff_version')
+            } else {
+              return e.json(400, {
+                success: false,
+                error: `A praça ${pRec.getString('name')} não possui tarifa vigente no banco.`,
+              })
+            }
+          }
+
+          const effectiveCost = isReturn ? unitAmount * 2 : unitAmount
+          totalTollCost += effectiveCost
+
+          plazasBreakdown.push({
+            plaza_id: pRec.id,
+            name: pRec.getString('name'),
+            highway: pRec.getString('highway'),
+            km: pRec.getFloat('km'),
+            city: pRec.getString('city'),
+            state: pRec.getString('state'),
+            unit_amount: unitAmount,
+            effective_cost: effectiveCost,
+            rate_per_axle: ratePerAxle,
+            tariff_version: usedTariffVersion,
+          })
+        }
+      }
+
+      totalTollCost = Number(totalTollCost.toFixed(2))
+      const totalPlazasCount = isReturn ? plazaIds.length * 2 : plazaIds.length
+      const avgRatePerAxle =
+        totalPlazasCount > 0 ? Number((totalTollCost / (totalPlazasCount * axles)).toFixed(2)) : 0
+      const estimatedDurationHours = Number((distanceKm / 65).toFixed(1))
+
+      // Atualizar dados da Ordem de Transporte
+      const nowIso = new Date().toISOString()
+      const originCity = origin.city || trip.getString('origin_city') || 'São Paulo'
+      const originState = origin.state || trip.getString('origin_state') || 'SP'
+      const destCity = destination.city || trip.getString('destination_city') || 'Curitiba'
+      const destState = destination.state || trip.getString('destination_state') || 'PR'
+
+      trip.set('origin_city', originCity)
+      trip.set('origin_state', originState)
+      trip.set('destination_city', destCity)
+      trip.set('destination_state', destState)
+      if (origin.address) trip.set('pickup_address', origin.address)
+      if (destination.address) trip.set('delivery_address', destination.address)
+      trip.set('waypoints', JSON.stringify(waypoints))
+      trip.set('distance_km', distanceKm)
+      trip.set('highways', highways)
+      trip.set('axles_count', axles)
+      trip.set('toll_tollgate_count', totalPlazasCount)
+      trip.set('toll_rate_per_axle', avgRatePerAxle)
+      trip.set('vpo_value', totalTollCost)
+      trip.set('estimated_duration_hours', estimatedDurationHours)
+      trip.set('route_approved', true)
+      trip.set('route_approved_at', nowIso)
+      trip.set('route_approved_by', authUser ? authUser.getString('name') : 'Operador TMS')
+      trip.set('tariff_version_used', usedTariffVersion)
+      trip.set('selected_plazas_details', JSON.stringify(plazasBreakdown))
+      trip.set('routing_distance_source', 'manual_rodoviaria')
+
+      // Atualizar o Piso Mínimo e Frete Estimado da Operação
+      const currentFreight = trip.getFloat('freight_value') || 0
+      // Estimativa ANTT para carga geral: R$ 6.80 por km com 6 eixos
+      const floorPerKm = axles >= 7 ? 8.2 : axles >= 5 ? 6.8 : 5.4
+      const calculatedFloor = Math.round(distanceKm * floorPerKm)
+      trip.set('minimum_floor_value', calculatedFloor)
+      const floorStatus = currentFreight >= calculatedFloor ? 'validado' : 'abaixo_piso'
+      trip.set('minimum_floor_status', floorStatus)
+
+      // Atualizar workflow_stages
+      let stages = {}
+      try {
+        const rawStages = trip.getString('workflow_stages')
+        stages = rawStages ? JSON.parse(rawStages) : {}
+      } catch (_) {
+        stages = {}
+      }
+
+      stages.roteirizacao = {
+        status: 'concluida',
+        updated_at: nowIso,
+        message: `Rota aprovada: ${originCity}/${originState} ➔ ${destCity}/${destState} (${distanceKm} km rodoviários, ${totalPlazasCount} praças, R$ ${totalTollCost.toFixed(2)} pedágio).`,
+        details: {
+          distance_km: distanceKm,
+          highways,
+          waypoints_count: waypoints.length,
+          plazas_count: totalPlazasCount,
+          total_toll_cost: totalTollCost,
+          tariff_version_used: usedTariffVersion,
+          approved_by: authUser ? authUser.getString('name') : 'Operador TMS',
+          approved_at: nowIso,
+        },
+      }
+
+      stages.vpo = {
+        status: totalTollCost > 0 ? 'requer_atencao' : 'concluida',
+        updated_at: nowIso,
+        message:
+          totalTollCost > 0
+            ? `VPO atualizado para R$ ${totalTollCost.toFixed(2)} com base nas ${totalPlazasCount} praças da rota aprovada. Aguardando voucher/TAG.`
+            : 'Rota aprovada sem custo de praças de pedágio informado.',
+        details: {
+          vpo_value: totalTollCost,
+          plazas: totalPlazasCount,
+          axles,
+          tariff_version: usedTariffVersion,
+        },
+      }
+
+      stages.piso_minimo = {
+        status: floorStatus === 'validado' ? 'concluida' : 'requer_atencao',
+        updated_at: nowIso,
+        message:
+          floorStatus === 'validado'
+            ? `Frete de R$ ${currentFreight.toFixed(2)} cumpre o piso mínimo ANTT calculado para ${distanceKm} km (R$ ${calculatedFloor.toFixed(2)}).`
+            : `Frete atual (R$ ${currentFreight.toFixed(2)}) abaixo do piso mínimo ANTT calculado para ${distanceKm} km (R$ ${calculatedFloor.toFixed(2)}).`,
+        details: {
+          distance_km: distanceKm,
+          freight_value: currentFreight,
+          minimum_floor: calculatedFloor,
+          status: floorStatus,
+        },
+      }
+
+      trip.set('workflow_stages', JSON.stringify(stages))
+      e.app.save(trip)
+
+      // Sincronizar percurso do MDF-e correspondente (se existir ou criar rascunho com as UFs do percurso)
+      try {
+        const ufs = [originState]
+        for (let wp of waypoints) {
+          if (wp.state && !ufs.includes(wp.state)) ufs.push(wp.state)
+        }
+        if (!ufs.includes(destState)) ufs.push(destState)
+        const routeUfsString = ufs.join(',')
+
+        const mdfes = e.app.findRecordsByFilter(
+          'mdfe_documents',
+          `trip_id = '${tripId}'`,
+          '-created',
+          1,
+          0,
+        )
+
+        if (mdfes.length > 0) {
+          const mdfeRec = mdfes[0]
+          mdfeRec.set('uf_origin', originState)
+          mdfeRec.set('uf_destination', destState)
+          mdfeRec.set('route_ufs', routeUfsString)
+          e.app.save(mdfeRec)
+        }
+      } catch (err) {
+        console.warn('[routing:approve] Erro ao sincronizar percurso do MDF-e:', err)
+      }
+
+      // Trilha de Auditoria
+      try {
+        const auditCol = e.app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('actor_name', authUser ? authUser.getString('name') : 'Operador TMS')
+        auditRec.set(
+          'actor_email',
+          authUser ? authUser.getString('email') : 'operador@transconnect.local',
+        )
+        if (authUser) auditRec.set('actor_id', authUser.id)
+        auditRec.set('action', 'route_approve')
+        auditRec.set(
+          'description',
+          `Rota aprovada para a Ordem ${trip.getString('operation_number')}: ${originCity}/${originState} ➔ ${destCity}/${destState} (${distanceKm} km, ${totalPlazasCount} praças, R$ ${totalTollCost.toFixed(2)} pedágio, tarifa ${usedTariffVersion}).`,
+        )
+        auditRec.set(
+          'details',
+          JSON.stringify({
+            tripId: trip.id,
+            operationNumber: trip.getString('operation_number'),
+            distanceKm,
+            totalPlazasCount,
+            totalTollCost,
+            usedTariffVersion,
+            calculatedFloor,
+            waypointsCount: waypoints.length,
+          }),
+        )
+        e.app.save(auditRec)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: `Rota aprovada com sucesso para a Ordem ${trip.getString('operation_number')}! VPO de R$ ${totalTollCost.toFixed(2)} e percurso do MDF-e atualizados.`,
+        route: {
+          trip_id: trip.id,
+          operation_number: trip.getString('operation_number'),
+          distance_km: distanceKm,
+          origin: `${originCity}/${originState}`,
+          destination: `${destCity}/${destState}`,
+          waypoints_count: waypoints.length,
+          highways,
+          axles,
+          toll_tollgate_count: totalPlazasCount,
+          vpo_value: totalTollCost,
+          tariff_version_used: usedTariffVersion,
+          minimum_floor_value: calculatedFloor,
+          minimum_floor_status: floorStatus,
+          approved_at: nowIso,
+        },
+      })
+    } catch (err) {
+      console.error('[routing:approve] Erro:', err)
+      return e.json(500, {
+        success: false,
+        error: err ? err.message || String(err) : 'Erro ao aprovar rota da Ordem de Transporte.',
       })
     }
   },

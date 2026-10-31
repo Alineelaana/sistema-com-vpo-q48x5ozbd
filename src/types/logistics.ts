@@ -103,6 +103,64 @@ export type TransportMode = 'lotacao' | 'fracionada' | 'dedicado' | 'subcontrata
 export type MinimumFloorStatus = 'validado' | 'abaixo_piso' | 'dispensado' | 'pendente'
 export type ContractStatus = 'pendente' | 'assinado' | 'dispensado' | 'cancelado'
 
+export interface RouteWaypoint {
+  id?: string
+  order: number
+  city: string
+  state: string
+  address?: string
+  instructions?: string
+}
+
+export interface TollTariff {
+  id: string
+  plaza_id: string
+  vehicle_category: string
+  axles: number
+  rate_per_axle: number
+  total_amount: number
+  effective_from: string
+  effective_to?: string
+  tariff_version: string
+  source: string
+  is_current: boolean
+  created?: string
+  updated?: string
+}
+
+export interface TollPlaza {
+  id: string
+  name: string
+  concessionaire: string
+  highway: string
+  km: number
+  city: string
+  state: string
+  lat?: number
+  lng?: number
+  is_active: boolean
+  notes?: string
+  tariffs?: TollTariff[]
+  created?: string
+  updated?: string
+}
+
+export interface PlazaTollBreakdown {
+  plaza_id: string
+  plaza_name: string
+  concessionaire: string
+  highway: string
+  km: number
+  city: string
+  state: string
+  axles: number
+  rate_per_axle: number
+  unit_amount: number
+  effective_amount: number
+  tariff_version: string
+  tariff_source: string
+}
+
 export interface TripWorkflowStages {
   nfe?: WorkflowStageInfo
   ordem?: WorkflowStageInfo
@@ -198,6 +256,18 @@ export interface Trip {
   workflow_stages?: string | TripWorkflowStages
   dispatch_released_at?: string
   dispatch_released_by?: string
+
+  // Roteirizador Inteligente (Passo 2)
+  waypoints?: string | RouteWaypoint[]
+  highways?: string
+  estimated_duration_hours?: number
+  route_approved?: boolean
+  route_approved_at?: string
+  route_approved_by?: string
+  tariff_version_used?: string
+  selected_plazas_details?: string | PlazaTollBreakdown[]
+  routing_provider?: string
+  routing_distance_source?: 'manual_rodoviaria' | 'provedor_externo' | 'roteirizador_connect'
 
   expand?: {
     vehicle_id?: Vehicle

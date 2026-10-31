@@ -723,52 +723,80 @@ export const DELIVERIES_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
 }
 
 export const ROUTING_SCREEN_LOGIC_DOC: ScreenLogicDoc = {
-  screenTitle: 'Roteirização Inteligente de Rotas',
-  screenBadge: 'Operações • Otimização de Trajeto',
-  lastUpdate: '2026-10-29',
-  version: '1.0.0',
+  screenTitle: 'Roteirizador Inteligente & Tarifas de Pedágio (TMS Passo 2)',
+  screenBadge: 'Operações • Ordem de Transporte & VPO',
+  lastUpdate: '2026-11-05',
+  version: '2.0.0',
   objective:
-    'Sequenciamento e otimização geométrica de paradas de entrega e coleta para redução de quilometragem rodada, tempo em trânsito e consumo de combustível com base na fórmula de Haversine e algoritmo do vizinho mais próximo.',
+    'Roteirizador Inteligente integrado à Ordem de Transporte: identifica origem, destino e waypoints, calcula distância rodoviária real comprovada, seleciona rodovias e praças de pedágio por categoria de eixos com tarifas versionadas no banco (ANTT-2026.1), atualizando automaticamente o VPO e o percurso do MDF-e.',
   realFeatures: [
-    'Otimização automática da sequência de paradas saindo do centro de distribuição (depósito)',
-    'Cálculo de distância total percorrida e tempo estimado em rota',
-    'Reordenação manual de paradas com recálculo instantâneo',
-    'Exportação do manifesto de rota para o motorista',
+    'Mapeamento rodoviário real da Ordem de Transporte com origem, destino e waypoints intermediários',
+    'Cálculo de custo de pedágio por praça e quantidade de eixos (2 a 9 eixos) com tarifas versionadas no banco',
+    'Registro formal e auditável da versão tarifária utilizada em cada operação (ex: ANTT-2026.1)',
+    'Aprovação da rota com atualização automática do VPO (Lei 10.209/01), frete piso e percurso do MDF-e',
+    'Salvaguarda estrita contra duplicação de cálculos ou reaprovações redundantes',
+    'Arquitetura plugável com status honesto (Aguardando configuração para provedor externo)',
+    'Sequenciamento de entregas locais fracionadas (última milha) por algoritmo TSP de proximidade',
   ],
   fieldsAndButtons: [
     {
-      name: 'Otimizar Rota',
-      type: 'Botão de Ação Primária',
-      purpose: 'Executa algoritmo heurístico de sequenciamento de paradas.',
+      name: 'Ordem de Transporte',
+      type: 'Seletor Operacional',
+      purpose: 'Vincula o trajeto rodoviário e praças diretamente ao registro central da viagem.',
     },
     {
-      name: 'Ponto de Partida (Depósito)',
-      type: 'Configuração',
-      purpose: 'Coordenadas base da transportadora.',
+      name: 'Distância Rodoviária Real',
+      type: 'Entrada Numérica Obrigatória',
+      purpose: 'Quilometragem real comprovada. É proibido o uso de linha reta para frete e VPO.',
     },
     {
-      name: 'Reordenar Paradas',
-      type: 'Controles Interativos',
-      purpose: 'Ajuste manual da sequência logística.',
+      name: 'Adicionar Parada (Waypoint)',
+      type: 'Botão de Ação',
+      purpose: 'Insere paradas intermediárias ao percurso rodoviário com cidade e UF.',
+    },
+    {
+      name: 'Calcular Custo de Pedágios',
+      type: 'Botão de Cálculo',
+      purpose: 'Consulta a coleção toll_tariffs para a versão vigente e totaliza o custo por eixo.',
+    },
+    {
+      name: 'Aprovar Rota na Ordem',
+      type: 'Ação Crítica',
+      purpose:
+        'Efetiva a rota na Ordem de Transporte, atualizando VPO, MDF-e e workflow das 12 etapas.',
     },
   ],
   businessRules: [
-    'Otimização busca minimizar a distância euclidiana/esférica entre pontos sequenciais.',
-    'Prioridade de janelas de atendimento de clientes preferenciais.',
+    'É estritamente proibido usar distância euclidiana/linha reta para cálculo de frete, piso mínimo ou VPO.',
+    'Aprovação de rota exige distância rodoviária real maior que zero.',
+    'Toda aprovação de rota registra a versão tarifária utilizada (ex: ANTT-2026.1) para conformidade regulatória.',
+    'Reaprovações com os mesmos parâmetros são idempotentes e não duplicam registros na trilha.',
   ],
   agentsAndAutomations: [
-    'Algoritmo client-side routingOptimizer.ts para rápida resposta interativa.',
+    'Orquestrador backend (operations_orchestrator.pb.js) sincroniza VPO, MDF-e e piso mínimo.',
   ],
-  validations: ['Pelo menos 2 paradas para cálculo de trajeto.'],
-  integrations: ['Serviço de roteirização e entregas cadastradas.'],
-  flowsAndDependencies: ['Rotas aprovadas são associadas a viagens ou manifestos de entrega.'],
+  validations: [
+    'Bloqueio honesto quando uma praça não possui tarifa vigente no banco.',
+    'Aviso claro de limitação de gabarito enquanto não houver provedor pesado configurado.',
+  ],
+  integrations: ['Coleções trips, toll_plazas, toll_tariffs, mdfe_documents e audit_logs.'],
+  flowsAndDependencies: [
+    'A rota aprovada alimenta a etapa 4 (Roteirização), etapa 5 (Piso Mínimo), etapa 9 (VPO) e etapa 10 (MDF-e) da Central de Operações.',
+  ],
   dataSourceAndDestination: {
-    origin: 'Lista de entregas pendentes da transportadora.',
-    destination: 'Manifesto de viagem otimizado.',
-    persistence: 'Persistência no registro da viagem.',
+    origin: 'Dados da NF-e e entrada rodoviária do operador.',
+    destination: 'Campos de rota em trips, VPO e percurso em mdfe_documents.',
+    persistence: 'Banco SQLite via PocketBase com trilha de auditoria.',
   },
-  permissions: [{ role: 'Operador e Roteirizador', access: 'Planejamento de rotas.' }],
-  notificationsAndErrors: ['Feedback visual na otimização da rota.'],
+  permissions: [
+    {
+      role: 'Operador Logístico, Roteirizador e Administrador',
+      access: 'Montagem e aprovação de rotas.',
+    },
+  ],
+  notificationsAndErrors: [
+    'Toasts de cálculo de pedágios, avisos de restrição e bloqueios por falta de tarifa vigente.',
+  ],
 }
 
 export const CONTROL_TOWER_SCREEN_LOGIC_DOC: ScreenLogicDoc = {

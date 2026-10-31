@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-30T23:15:39.311Z",
+  "generatedAt": "2026-10-31T02:33:41.838Z",
   "collections": [
     {
       "name": "users",
@@ -827,6 +827,67 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "waypoints",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "highways",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estimated_duration_hours",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "route_approved",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "route_approved_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "route_approved_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tariff_version_used",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "selected_plazas_details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "routing_provider",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "routing_distance_source",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["manual_rodoviaria", "provedor_externo", "roteirizador_connect"]
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_trips_code ON trips (trip_code)"]
@@ -1603,7 +1664,11 @@
             "operation_stage_process",
             "operation_release",
             "operation_reprocess",
-            "operation_create_from_nfe"
+            "operation_create_from_nfe",
+            "route_create",
+            "route_update",
+            "route_approve",
+            "route_calculate_tolls"
           ]
         },
         {
@@ -3453,6 +3518,190 @@
         "CREATE INDEX idx_dispatch_status_log ON document_dispatch_logs (status)",
         "CREATE INDEX idx_dispatch_doc ON document_dispatch_logs (document_type, document_id)",
         "CREATE INDEX idx_dispatch_recip ON document_dispatch_logs (recipient_email)"
+      ]
+    },
+    {
+      "name": "toll_plazas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "concessionaire",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "highway",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "km",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lat",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lng",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_toll_plazas_highway ON toll_plazas (highway)",
+        "CREATE INDEX idx_toll_plazas_state ON toll_plazas (state)"
+      ]
+    },
+    {
+      "name": "toll_tariffs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "plaza_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "toll_plazas"
+        },
+        {
+          "name": "vehicle_category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "axles",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "rate_per_axle",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "total_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "effective_from",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "effective_to",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tariff_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_current",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_toll_tariffs_plaza ON toll_tariffs (plaza_id)",
+        "CREATE INDEX idx_toll_tariffs_version ON toll_tariffs (tariff_version)",
+        "CREATE INDEX idx_toll_tariffs_axles ON toll_tariffs (axles)"
       ]
     }
   ]
