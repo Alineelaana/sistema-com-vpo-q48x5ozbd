@@ -179,17 +179,15 @@ export const DamdfePdfModal: React.FC<DamdfePdfModalProps> = ({
               variant="outline"
               size="sm"
               onClick={handlePrint}
-              disabled={!isAuthorized}
               className="gap-1.5 bg-white shadow-sm text-slate-800 text-xs"
             >
               <Printer className="h-3.5 w-3.5" />
-              Imprimir DAMDFE
+              Imprimir DAMDFE {!isAuthorized && '(Minuta)'}
             </Button>
             {onSendDocument ? (
               <Button
                 size="sm"
                 onClick={() => onSendDocument(mdfe)}
-                disabled={!isAuthorized}
                 className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
               >
                 <Share2 className="h-3.5 w-3.5" />

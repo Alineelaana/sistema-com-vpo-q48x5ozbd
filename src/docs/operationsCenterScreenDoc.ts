@@ -36,10 +36,22 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
         'Permite reprocessar uma etapa específica que retornou rejeição ou inconsistência externa (ex: erro de schema no CT-e ou timeout de IPEF).',
     },
     {
+      name: 'Etapa 6 "CT-e SEFAZ" e Modal DACTE (Passo 5)',
+      type: 'Documento Fiscal / PDF A4',
+      description:
+        'Preparação do CT-e a partir da Ordem de Transporte e transmissão à SEFAZ via provedor fiscal. Modal DACTE em formato A4, download do XML e tarja de advertência "DOCUMENTO NÃO AUTORIZADO PERANTE A SEFAZ" quando em rascunho, fila ou rejeitado.',
+    },
+    {
       name: 'Etapa 7 "Contrato / CTRB" & Modal de Impressão PDF',
       type: 'Geração Documental / PDF',
       description:
         'Gera o Contrato de Transporte Rodoviário de Bens (CTRB) a partir da Ordem de Transporte, dados bancários e modelo vigente. Inclui botão de impressão e download em formato padrão A4 operacional (não fiscal).',
+    },
+    {
+      name: 'Etapa 10 "MDF-e SEFAZ" e Modal DAMDFE com IDVPO (Passo 5)',
+      type: 'Manifesto Eletrônico / PDF A4',
+      description:
+        'Preparação do MDF-e agrupando CT-es autorizados, CIOT, seguro e grupo de Vale-Pedágio com IDVPO no campo nCompra do grupo de vale-pedágio. Exige CT-e autorizado prévio. Modal DAMDFE com visualização, impressão e tarja de advertência quando não autorizado.',
     },
     {
       name: 'Aba "Modelos de Contrato CTRB"',
@@ -67,6 +79,9 @@ export const OPERATIONS_CENTER_SCREEN_LOGIC_DOC = {
     'Assinatura Eletrônica Honesta: Sem provedor jurídico ativo (Clicksign/DocuSign), exibe "Aguardando configuração" na Central de Conectores, sem falsa simulação de documento assinado.',
     'Regra do VPO (Lei nº 10.209/2001): O Vale-Pedágio Obrigatório é responsabilidade do embarcador e deve ser pago antes do início da viagem através de dispositivo eletrônico (TAG ou cartão IPEF).',
     'Conectores Transparentes: Em hipótese alguma simula autorização fiscal da SEFAZ ou concessão de crédito financeiro. Serviços sem token ativo exibem "Aguardando configuração".',
+    'Regra de Transmissão Fiscal (Passo 5): Protocolo oficial gravado SOMENTE com confirmação do webservice da SEFAZ. Retransmissão da mesma operação não duplica documentos fiscais nem números de emissão. Documentos já autorizados são bloqueados contra retransmissão.',
+    'Regra de Dependência do MDF-e: Conforme a legislação fiscal, o MDF-e exige CT-e prévio autorizado pela SEFAZ. Sem CT-e autorizado, a transmissão é bloqueada com mensagem clara.',
+    'IDVPO no MDF-e: O identificador da compra do Vale-Pedágio Obrigatório é gravado no campo nCompra do grupo de vale-pedágio do MDF-e modelo 58.',
     'Isolamento e Auditoria: Toda alteração de status ou avanço de etapa é persistida com timestamp, IP e usuário responsável na coleção audit_logs.',
   ],
   calculations: [
